@@ -1627,8 +1627,13 @@
             </div>
 
             <div class="setting-item">
+                <span class="setting-label">Firestore DB</span>
+                <span id="firestore-ref-badge" style="font-size: 11px; font-weight: 700; color: var(--apple-blue); font-family: monospace;">Loading...</span>
+            </div>
+
+            <div class="setting-item">
                 <span class="setting-label">Initialize Demo</span>
-                <a href="https://telcodemos.com/live-smarthome-agent/initialize" target="_blank" class="setting-link-btn">
+                <a href="/live-smarthome-agent/initialize" target="_blank" class="setting-link-btn">
                     Open
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="10" height="10">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -1640,7 +1645,7 @@
 
             <div class="setting-item">
                 <span class="setting-label">Camera Viewer</span>
-                <a href="https://telcodemos.com/live-smarthome-agent/camview" target="_blank" class="setting-link-btn">
+                <a href="/live-smarthome-agent/camview" target="_blank" class="setting-link-btn">
                     Open
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="10" height="10">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -1853,9 +1858,6 @@
     </div>    
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-        import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
-
         // --- NEW: SETTINGS TOGGLE LOGIC ---
         document.addEventListener('DOMContentLoaded', () => {
             const settingsBtn = document.getElementById('settings-btn');
@@ -1885,18 +1887,17 @@
             }
         });
 
-        // --- 1. FIREBASE SETUP ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyAU4978uMcFABSTmOtC70ySsAP4yoJpqv8",
-            authDomain: "genai-e2e-demos.firebaseapp.com",
-            projectId: "genai-e2e-demos",
-            storageBucket: "genai-e2e-demos.firebasestorage.app",
-            messagingSenderId: "554686566379",
-            appId: "1:554686566379:web:5b543c4b169319ffe913ae"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app, "live-smartcamera");
+        // --- 1. BACKEND CONFIG (.env driven) ---
+        fetch('/live-smarthome-agent/api/config')
+            .then(r => r.json())
+            .then(cfg => {
+                const badge = document.getElementById('firestore-ref-badge');
+                if (badge && cfg.project_id) {
+                    badge.textContent = `${cfg.project_id} / ${cfg.firestore_database}`;
+                    badge.title = `Project: ${cfg.project_id} | DB: ${cfg.firestore_database} (${cfg.collection}/${cfg.document})`;
+                }
+            })
+            .catch(err => console.error("Failed to fetch backend config:", err));
 
         // --- 2. ICON MAP & STATE ---
         const icons = {
@@ -1998,43 +1999,47 @@
             }
         }
 
-        // --- 4. REAL-TIME FIRESTORE LISTENER ---
-        const docRef = doc(db, "home-users", "default");
-        
-        onSnapshot(docRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                if (data.devices) {
-                    
-                    window.devicesData = Object.values(data.devices);
-                    window.devicesData.sort((a, b) => a.id.localeCompare(b.id));
-                    
-                    const typeCounts = { ac: 0, camera: 0, light: 0, lock: 0 };
-                    window.devicesData.forEach(device => {
-                        if (typeCounts[device.deviceType] !== undefined) {
-                            typeCounts[device.deviceType]++;
-                        }
-                    });
+        // --- 4. REAL-TIME FIRESTORE LISTENER (via Backend SSE) ---
+        function applyDeviceSnapshot(payload) {
+            if (payload && payload.exists && payload.data && payload.data.devices) {
+                window.devicesData = Object.values(payload.data.devices);
+                window.devicesData.sort((a, b) => a.id.localeCompare(b.id));
 
-                    const countAcEl = document.getElementById('count-ac');
-                    const countCameraEl = document.getElementById('count-camera');
-                    const countLightEl = document.getElementById('count-light');
-                    const countLockEl = document.getElementById('count-lock');
+                const typeCounts = { ac: 0, camera: 0, light: 0, lock: 0 };
+                window.devicesData.forEach(device => {
+                    if (typeCounts[device.deviceType] !== undefined) {
+                        typeCounts[device.deviceType]++;
+                    }
+                });
 
-                    if(countAcEl) countAcEl.innerText = typeCounts.ac;
-                    if(countCameraEl) countCameraEl.innerText = typeCounts.camera;
-                    if(countLightEl) countLightEl.innerText = typeCounts.light;
-                    if(countLockEl) countLockEl.innerText = typeCounts.lock;
+                const countAcEl = document.getElementById('count-ac');
+                const countCameraEl = document.getElementById('count-camera');
+                const countLightEl = document.getElementById('count-light');
+                const countLockEl = document.getElementById('count-lock');
 
-                    renderDeviceGrid();
-                    
-                    const deviceCountEl = document.getElementById('device-count');
-                    if (deviceCountEl) deviceCountEl.innerText = window.devicesData.length;
-                }
+                if(countAcEl) countAcEl.innerText = typeCounts.ac;
+                if(countCameraEl) countCameraEl.innerText = typeCounts.camera;
+                if(countLightEl) countLightEl.innerText = typeCounts.light;
+                if(countLockEl) countLockEl.innerText = typeCounts.lock;
+
+                renderDeviceGrid();
+
+                const deviceCountEl = document.getElementById('device-count');
+                if (deviceCountEl) deviceCountEl.innerText = window.devicesData.length;
             } else {
                 console.warn("No such document found in Firestore!");
             }
-        });
+        }
+
+        const deviceStream = new EventSource('/live-smarthome-agent/api/devices/stream');
+        deviceStream.onmessage = (event) => {
+            try {
+                const payload = JSON.parse(event.data);
+                applyDeviceSnapshot(payload);
+            } catch (err) {
+                console.error("Failed to parse device stream event:", err);
+            }
+        };
 
         // --- 5. UI VISUAL EXPORTS (For app.js to trigger animations) ---
         window.setAgentState = function(state) {

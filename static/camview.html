@@ -200,10 +200,10 @@
                 </div>
                 <div>
                     <div class="header-title">Camera Viewer</div>
-                    <div class="header-subtitle">Live SmartHome Camera Feeds</div>
+                    <div class="header-subtitle" id="camview-subtitle">Live SmartHome Camera Feeds</div>
                 </div>
             </div>
-            <div class="engine-pill">genai-e2e-demos</div>
+            <div class="engine-pill" id="engine-pill">Loading...</div>
         </div>
 
         <!-- Panel -->
@@ -279,6 +279,16 @@
     <!-- Script to handle missing images -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            fetch('/live-smarthome-agent/api/config')
+                .then(r => r.json())
+                .then(cfg => {
+                    const pill = document.getElementById('engine-pill');
+                    if (pill && cfg.project_id) {
+                        pill.textContent = `${cfg.project_id} · ${cfg.firestore_database}`;
+                    }
+                })
+                .catch(err => console.error("Failed to fetch backend config:", err));
+
             const cameraImages = document.querySelectorAll('.cam-img');
 
             cameraImages.forEach(img => {

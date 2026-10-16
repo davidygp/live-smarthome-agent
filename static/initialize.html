@@ -342,10 +342,10 @@
                 </div>
                 <div>
                     <div class="header-title">Admin Console</div>
-                    <div class="header-subtitle">Firestore Device Configuration · live-smartcamera</div>
+                    <div class="header-subtitle" id="header-subtitle">Firestore Device Configuration</div>
                 </div>
             </div>
-            <div class="engine-pill">genai-e2e-demos</div>
+            <div class="engine-pill" id="engine-pill">Loading...</div>
         </div>
 
         <!-- Status Banner -->
@@ -460,19 +460,6 @@
     </div><!-- /.console-wrapper -->
 
 <script type="module">
-    import { initializeApp }                                from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getFirestore, doc, setDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-
-    // ── Firebase ──────────────────────────────────────────────────────────────
-    const firebaseConfig = {
-        apiKey: "AIzaSyAU4978uMcFABSTmOtC70ySsAP4yoJpqv8",
-        authDomain: "genai-e2e-demos.firebaseapp.com",
-        projectId: "genai-e2e-demos",
-        storageBucket: "genai-e2e-demos.firebasestorage.app",
-        messagingSenderId: "554686566379",
-        appId: "1:554686566379:web:5b543c4b169319ffe913ae"
-    };
-
     // ── Default constant ──────────────────────────────────────────────────────
     const initialData = {
         devices: {
@@ -606,12 +593,23 @@
     let isViewMode   = false;  // true = retrieved from Firestore, textarea tinted teal
     let isDirty      = false;  // user has edited after a retrieve
 
-    // ── Firebase ──────────────────────────────────────────────────────────────
-    let db;
-    try { db = getFirestore(initializeApp(firebaseConfig), "live-smartcamera"); }
-    catch (e) { showStatus("Firebase init failed.", "error"); console.error(e); }
+    // ── Backend Config (.env driven) ──────────────────────────────────────────
+    const API_CONFIG_URL  = '/live-smarthome-agent/api/config';
+    const API_DEVICES_URL = '/live-smarthome-agent/api/devices';
 
-    const docRef = () => doc(db, "home-users", "default");
+    fetch(API_CONFIG_URL)
+        .then(r => r.json())
+        .then(cfg => {
+            const sub = document.getElementById('header-subtitle');
+            const pill = document.getElementById('engine-pill');
+            if (sub && cfg.firestore_database) {
+                sub.textContent = `Firestore Device Configuration · ${cfg.firestore_database}`;
+            }
+            if (pill && cfg.project_id) {
+                pill.textContent = cfg.project_id;
+            }
+        })
+        .catch(e => console.error("Failed to load backend config:", e));
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     function showStatus(msg, type = 'info') {
@@ -762,14 +760,16 @@
             showStatus("Fetching device config from Firestore…", "info");
             editor.value = "Loading…"; refreshLines();
 
-            const snap = await getDoc(docRef());
-            if (!snap.exists()) {
+            const res = await fetch(API_DEVICES_URL);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const result = await res.json();
+            if (!result.exists || !result.data) {
                 showStatus("No document found. Load defaults and Initialize first.", "error");
                 editor.value = "Document does not exist."; refreshLines();
                 return;
             }
 
-            sourceData = snap.data();
+            sourceData = result.data;
 
             // Reset controls
             activeFilter = 'all';
@@ -797,7 +797,12 @@
         try {
             lockBtns();
             showStatus("Writing device config to Firestore…", "info");
-            await setDoc(docRef(), payload, { merge: true });
+            const res = await fetch(API_DEVICES_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             // After a successful write, treat editor content as the new source
             sourceData = payload;
             setMode('live');
@@ -817,7 +822,8 @@
         try {
             lockBtns();
             showStatus("Deleting device config document…", "info");
-            await deleteDoc(docRef());
+            const res = await fetch(API_DEVICES_URL, { method: 'DELETE' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             sourceData = null;
             editor.value = "Document deleted."; refreshLines();
             matchCount.textContent = '';
