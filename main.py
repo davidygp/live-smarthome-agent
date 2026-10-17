@@ -93,7 +93,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 import config
 from config import AgentConfig
-from agents import get_aris_agent
+from agents import get_aris_agent, toolInstance
 from voiceconfig import VoiceConfig
 
 app_name = config.APP_NAME
@@ -112,7 +112,7 @@ from google.genai.types import ProactivityConfig
 
 # Remaining Third-Party App Frameworks (FastAPI, Uvicorn, etc.)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import HTTPException
@@ -185,6 +185,119 @@ async def root():
 async def root():
     """Serve the index.html page."""
     return FileResponse(Path(__file__).parent / "static" / "camview.html", headers=NO_CACHE_HEADERS)
+
+
+# ========================================
+# Backend Firestore & Config Endpoints (.env driven)
+# ========================================
+
+@app.get("/live-smarthome-agent/api/config")
+async def get_app_config():
+    """Return environment and Firestore reference metadata for the frontend UI."""
+    return {
+        "project_id": os.getenv("GOOGLE_CLOUD_PROJECT", ""),
+        "location": os.getenv("GOOGLE_CLOUD_LOCATION", ""),
+        "firestore_database": os.getenv("GOOGLE_CLOUD_FIRESTORE", ""),
+        "collection": "home-users",
+        "document": "default",
+        "orchestrator_model": agent_config.ORCHESTRATOR_MODEL,
+        "subagent_model": agent_config.SUBAGENT_MODEL,
+    }
+
+@app.get("/live-smarthome-agent/api/devices")
+async def get_devices():
+    """Retrieve the smart home device configuration document from Firestore."""
+    if not toolInstance.db:
+        raise HTTPException(status_code=503, detail="Firestore connection not initialized.")
+
+    def _fetch():
+        doc_ref = toolInstance.db.collection("home-users").document("default")
+        snap = doc_ref.get()
+        if not snap.exists:
+            return None
+        return snap.to_dict()
+
+    data = await run_in_threadpool(_fetch)
+    if data is None:
+        return {"exists": False, "data": None}
+    return {"exists": True, "data": data}
+
+@app.post("/live-smarthome-agent/api/devices")
+async def set_devices(request: Request):
+    """Initialize or update the smart home device configuration document in Firestore."""
+    if not toolInstance.db:
+        raise HTTPException(status_code=503, detail="Firestore connection not initialized.")
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload must be a JSON object.")
+
+    def _write():
+        doc_ref = toolInstance.db.collection("home-users").document("default")
+        doc_ref.set(payload, merge=True)
+
+    await run_in_threadpool(_write)
+    return {"status": "ok"}
+
+@app.delete("/live-smarthome-agent/api/devices")
+async def delete_devices():
+    """Delete the smart home device configuration document from Firestore."""
+    if not toolInstance.db:
+        raise HTTPException(status_code=503, detail="Firestore connection not initialized.")
+
+    def _delete():
+        doc_ref = toolInstance.db.collection("home-users").document("default")
+        doc_ref.delete()
+
+    await run_in_threadpool(_delete)
+    return {"status": "ok"}
+
+@app.get("/live-smarthome-agent/api/devices/stream")
+async def stream_devices(request: Request):
+    """Stream real-time Firestore snapshot updates for home-users/default via SSE."""
+    if not toolInstance.db:
+        raise HTTPException(status_code=503, detail="Firestore connection not initialized.")
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    doc_ref = toolInstance.db.collection("home-users").document("default")
+
+    def _on_snapshot(doc_snapshot, changes, read_time):
+        try:
+            if not doc_snapshot:
+                payload = {"exists": False, "data": None}
+            else:
+                snap = doc_snapshot[0] if isinstance(doc_snapshot, list) else doc_snapshot
+                if snap.exists:
+                    payload = {"exists": True, "data": snap.to_dict()}
+                else:
+                    payload = {"exists": False, "data": None}
+            loop.call_soon_threadsafe(queue.put_nowait, payload)
+        except Exception as exc:
+            logger.error(f"Error in Firestore on_snapshot callback: {exc}")
+
+    watch = doc_ref.on_snapshot(_on_snapshot)
+
+    async def _event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    payload = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"data: {json.dumps(payload)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+        finally:
+            try:
+                watch.unsubscribe()
+            except Exception:
+                pass
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers=NO_CACHE_HEADERS,
+    )
 
 
 
