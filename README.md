@@ -4,7 +4,8 @@
 Ensure following baseline roles are added to the account on a fresh run\
 (setup.sh will verify these and automatically grant the remaining operator roles):
   - Project IAM Admin (roles/resourcemanager.projectIamAdmin)
-  - Service Usage Admin (roles/serviceusage.serviceUsageAdmin)\
+  - Service Usage Admin (roles/serviceusage.serviceUsageAdmin)
+
 Edit the .env file (changing <project_id>)
 
 ### 2) Setup the infra, IAM, etc
@@ -31,6 +32,6 @@ tmux attach-session -t smarthome
 ```
 
 ### 5) Access via these URLs
-http://localhost:8001/live-smarthome-agent               # Main Voice & Smart Home UI 
-http://localhost:8001/live-smarthome-agent/initialize    # Admin / Firestore Initializer	
-http://localhost:8001/live-smarthome-agent/camview	     # Camera Feed Viewer
+http://localhost:8001/live-smarthome-agent               # Main Voice & Smart Home UI\ 
+http://localhost:8001/live-smarthome-agent/initialize    # Admin / Firestore Initializer\
+http://localhost:8001/live-smarthome-agent/camview	     # Camera Feed Viewer\
