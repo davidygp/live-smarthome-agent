@@ -1,10 +1,10 @@
 # live-smarthome-agent #
 
 ### 1) Prework
-Ensure following baseline roles are added to the account on a fresh run
+Ensure following baseline roles are added to the account on a fresh run\
 (setup.sh will verify these and automatically grant the remaining operator roles):
   - Project IAM Admin (roles/resourcemanager.projectIamAdmin)
-  - Service Usage Admin (roles/serviceusage.serviceUsageAdmin)
+  - Service Usage Admin (roles/serviceusage.serviceUsageAdmin)\
 Edit the .env file (changing <project_id>)
 
 ### 2) Setup the infra, IAM, etc
