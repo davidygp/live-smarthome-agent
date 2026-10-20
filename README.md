@@ -32,6 +32,6 @@ tmux attach-session -t smarthome
 ```
 
 ### 5) Access via these URLs
-http://localhost:8001/live-smarthome-agent               # Main Voice & Smart Home UI\ 
-http://localhost:8001/live-smarthome-agent/initialize    # Admin / Firestore Initializer\
-http://localhost:8001/live-smarthome-agent/camview	     # Camera Feed Viewer\
+http://localhost:8001/live-smarthome-agent               # Main Voice & Smart Home UI\   
+http://localhost:8001/live-smarthome-agent/initialize    # Admin / Firestore Initializer\  
+http://localhost:8001/live-smarthome-agent/camview	     # Camera Feed Viewer\  

@@ -3,7 +3,10 @@ import { startAudioRecorderWorklet } from "./audio-recorder.js";
 
 // Connection mapping required by ADK Backend
 const userId = "demo-user";
-const sessionId = "demo-session-" + Math.random().toString(36).substring(7);
+function generateSessionId() {
+    return "demo-session-" + Math.random().toString(36).substring(7);
+}
+let sessionId = generateSessionId();
 let websocket = null;
 let isConnected = false;
 let isConnecting = false;
@@ -184,7 +187,11 @@ async function connectWebsocket() {
         if (micStream) micStream.getTracks().forEach(t => t.stop());
         
         isConnecting = false; // Reset lock so user can try again
+        return; // Prevent opening a non-functional websocket without audio hardware
     }
+
+    // Generate fresh session ID on each new connection
+    sessionId = generateSessionId();
 
     // 2. Connect to ADK FastAPI WebSocket Route
 
@@ -456,6 +463,8 @@ function sendChatMessage() {
 
         // Clear the text box
         chatInput.value = "";
+    } else {
+        transcriptUser.innerText = "⚠️ Not connected. Tap the orb to connect first.";
     }
 }
 
