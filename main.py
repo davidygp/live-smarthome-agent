@@ -12,7 +12,7 @@ import uvicorn
 from typing import Optional
 
 # Load environment variables first
-load_dotenv(override=True)
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 # =========================================================================
 # TELEMETRY ACTIVATION (Must happen BEFORE any google or adk imports!)
@@ -197,19 +197,55 @@ async def add_cache_control_header(request: Request, call_next):
 # Front End Endpoints
 # ========================================
 
+def resolve_ui_version(request: Request) -> str:
+    """Determines whether to serve v1 or v2 visuals based on query, cookie, or .env."""
+    # 1. Query parameter override (?v=2 or ?ui=v2 or ?v=1 or ?ui=v1)
+    query_v = request.query_params.get("ui") or request.query_params.get("v")
+    if query_v in ("v1", "1"):
+        return "v1"
+    if query_v in ("v2", "2"):
+        return "v2"
+
+    # 2. Cookie override
+    cookie_v = request.cookies.get("ui_version")
+    if cookie_v in ("v1", "v2"):
+        return cookie_v
+
+    # 3. Environment default (.env: SMARTHOME_UI_VERSION=v2)
+    env_v = os.getenv("SMARTHOME_UI_VERSION", "v1").lower().strip()
+    return "v2" if env_v in ("v2", "2") else "v1"
+
+
 @app.get("/live-smarthome-agent")
-async def root():
-    """Serve the index.html page."""
+async def root(request: Request):
+    """Serve the smart home dashboard (v1 or v2 dynamically resolved)."""
+    version = resolve_ui_version(request)
+    v2_file = Path(__file__).parent / "static" / "v2" / "index.html"
+    if version == "v2" and v2_file.exists():
+        return FileResponse(v2_file, headers=NO_CACHE_HEADERS)
     return FileResponse(Path(__file__).parent / "static" / "index.html", headers=NO_CACHE_HEADERS)
 
+@app.get("/live-smarthome-agent/v1")
+async def root_v1():
+    """Explicitly serve the v1 visuals."""
+    return FileResponse(Path(__file__).parent / "static" / "index.html", headers=NO_CACHE_HEADERS)
+
+@app.get("/live-smarthome-agent/v2")
+async def root_v2():
+    """Explicitly serve the v2 visuals."""
+    v2_file = Path(__file__).parent / "static" / "v2" / "index.html"
+    if not v2_file.exists():
+        raise HTTPException(status_code=404, detail="v2 visual template not yet created at static/v2/index.html")
+    return FileResponse(v2_file, headers=NO_CACHE_HEADERS)
+
 @app.get("/live-smarthome-agent/initialize")
-async def root():
+async def initialize_page():
     """Serve the initialize.html page."""
     return FileResponse(Path(__file__).parent / "static" / "initialize.html", headers=NO_CACHE_HEADERS)
 
 @app.get("/live-smarthome-agent/camview")
-async def root():
-    """Serve the index.html page."""
+async def camview_page():
+    """Serve the camview.html page."""
     return FileResponse(Path(__file__).parent / "static" / "camview.html", headers=NO_CACHE_HEADERS)
 
 
