@@ -119,6 +119,32 @@ from fastapi import HTTPException
 from fastapi.concurrency import run_in_threadpool
 # =========================================================================
 
+SMARTHOME_CUSTOM_VOCABULARY = [
+    # 1. Agent Persona & Named Entities (from camsim.py /camconfig)
+    "Aris",
+    "Grandma",
+    "ThaiMaid",
+    # 2. Hardware Device IDs & Labels (from tools.py /Firestore)
+    "ac-1",
+    "ac-2",
+    "cam-1",
+    "cam-2",
+    "cam-3",
+    "light-1",
+    "lock-1",
+    "Living Room AC",
+    "Guest Bedroom Light",
+    "Front Door Lock",
+    # 3. Smart Home Modes & States (from agents.py hard rules)
+    "DND",
+    "Protect",
+    "Private",
+    "Online",
+    "Movie mode",
+    "Cool mode",
+    "Party mode",
+]
+
 def format_modality_details(details_list) -> str:
     """Flattens and alphabetically sorts a list of ModalityTokenCount objects 
     into a consistent safe CSV column format.
@@ -360,7 +386,7 @@ async def websocket_endpoint(
                 )
             )
         ),            
-        "input_audio_transcription": types.AudioTranscriptionConfig(language_codes=['en-US', 'th-TH']),
+        "input_audio_transcription": types.AudioTranscriptionConfig(language_codes=['en-US', 'th-TH'], custom_vocabulary=SMARTHOME_CUSTOM_VOCABULARY),
         "output_audio_transcription": types.AudioTranscriptionConfig(language_codes=['en-US', 'th-TH']),
     }
 
