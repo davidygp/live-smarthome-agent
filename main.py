@@ -191,8 +191,8 @@ NO_CACHE_HEADERS = {
 @app.middleware("http")
 async def add_cache_control_header(request: Request, call_next):
     response = await call_next(request)
-    # Target only the images inside the static camview directory
-    if request.url.path.startswith("/live-smarthome-agent/static/camview/") or request.url.path.endswith(".js"):
+    # Target the camview images plus JS/CSS so UI changes are never served stale
+    if request.url.path.startswith("/live-smarthome-agent/static/camview/") or request.url.path.endswith((".js", ".css")):
         response.headers.update(NO_CACHE_HEADERS)
     return response
 

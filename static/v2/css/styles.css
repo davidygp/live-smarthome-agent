@@ -1313,3 +1313,44 @@ code, pre, .mono {
     border-top: 1px dashed var(--border-subtle);
     font-variant-numeric: tabular-nums;
 }
+
+/* ==========================================================================
+   Collapsible Panel Toggles (Token Usage, Smart Vision Cameras)
+   ========================================================================== */
+.panel-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    margin-left: 2px;
+    border: 1px solid #ffffff;
+    border-radius: var(--radius-sm);
+    background: #000000;
+    color: #ffffff;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: box-shadow 0.15s ease, opacity 0.15s ease;
+}
+.panel-toggle:hover,
+.panel-toggle:focus-visible {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+    outline: none;
+}
+.panel-toggle svg {
+    color: inherit;
+    transition: transform 0.2s ease;
+}
+.panel-collapsed .panel-toggle svg {
+    transform: rotate(-90deg);
+}
+.panel-collapsed .collapsible-body {
+    display: none !important;
+}
+.supabase-card.panel-collapsed .card-header {
+    border-bottom-color: transparent;
+}
+.panel-collapsed > .section-title {
+    margin-bottom: 0;
+}

@@ -1118,7 +1118,40 @@ window.switchUiVersion = function(version) {
 // Initialization & Event Binding
 // =========================================================================
 
+// =========================================================================
+// Collapsible Panel Toggles (state persisted per panel in localStorage)
+// =========================================================================
+function setPanelCollapsed(panel, toggle, collapsed) {
+    panel.classList.toggle("panel-collapsed", collapsed);
+    // Hide the body inline so collapsing works even if a stale stylesheet is cached
+    const body = document.getElementById(toggle.getAttribute("aria-controls"));
+    if (body) body.style.display = collapsed ? "none" : "";
+    const chevron = toggle.querySelector("svg");
+    if (chevron) chevron.style.transform = collapsed ? "rotate(-90deg)" : "";
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.title = collapsed ? "Expand panel" : "Collapse panel";
+}
+
+function initPanelToggles() {
+    document.querySelectorAll(".panel-toggle[data-collapse-panel]").forEach((toggle) => {
+        const panel = document.getElementById(toggle.dataset.collapsePanel);
+        if (!panel) return;
+        const storageKey = `v2-panel-collapsed:${panel.id}`;
+        let saved = false;
+        try { saved = localStorage.getItem(storageKey) === "1"; } catch { /* storage unavailable */ }
+        setPanelCollapsed(panel, toggle, saved);
+
+        toggle.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const collapsed = !panel.classList.contains("panel-collapsed");
+            setPanelCollapsed(panel, toggle, collapsed);
+            try { localStorage.setItem(storageKey, collapsed ? "1" : "0"); } catch { /* ignore */ }
+        });
+    });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+    initPanelToggles();
     if (connectBtn) connectBtn.addEventListener("click", connect);
     if (endBtn) endBtn.addEventListener("click", disconnect);
     if (orbWrapper) orbWrapper.addEventListener("click", () => {

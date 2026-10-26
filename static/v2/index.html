@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Supabase Design System Stylesheet -->
-    <link rel="stylesheet" href="/live-smarthome-agent/static/v2/css/styles.css">
+    <link rel="stylesheet" href="/live-smarthome-agent/static/v2/css/styles.css?v=panel-toggle-2">
     <!-- Modular ADK & Live API Controller -->
     <script src="/live-smarthome-agent/static/v2/js/app-v2.js" type="module"></script>
 </head>
@@ -164,10 +164,13 @@
                             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
                         </svg>
                         <span>Token Usage Telemetry</span>
+                        <button type="button" class="panel-toggle" data-collapse-panel="token-usage-card" aria-expanded="true" aria-controls="token-usage-body" title="Collapse panel">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
                     </div>
                     <span class="card-badge" id="v2-token-turns-badge">0 calls · 0 turns</span>
                 </div>
-                <div class="card-body token-stats-grid">
+                <div class="card-body token-stats-grid collapsible-body" id="token-usage-body">
                     <!-- Overall Session Stats -->
                     <div class="token-stat-box">
                         <div class="token-stat-header">
@@ -310,15 +313,18 @@
                 </div>
 
                 <!-- Surveillance Matrix -->
-                <div>
+                <div id="camera-panel">
                     <div class="section-title">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M23 7l-7 5 7 5V7z"></path>
                             <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
                         </svg>
                         <span>Smart Vision Cameras</span>
+                        <button type="button" class="panel-toggle" data-collapse-panel="camera-panel" aria-expanded="true" aria-controls="camera-grid" title="Collapse panel">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
                     </div>
-                    <div class="device-grid" id="camera-grid">
+                    <div class="device-grid collapsible-body" id="camera-grid">
                         <!-- Dynamic Camera Cards -->
                     </div>
                 </div>
