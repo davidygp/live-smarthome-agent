@@ -1134,6 +1134,11 @@ code, pre, .mono {
     color: var(--brand-emerald);
     border: 1px solid var(--brand-emerald-border);
 }
+.stream-tag.usage {
+    background: rgba(245, 166, 35, 0.14);
+    color: var(--status-warning);
+    border: 1px solid rgba(245, 166, 35, 0.35);
+}
 .stream-msg {
     color: var(--text-default);
     word-break: break-all;
@@ -1243,4 +1248,68 @@ code, pre, .mono {
 @keyframes toast-in {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   Token Usage Telemetry Card (Session & Per-Call)
+   ========================================================================== */
+.token-stats-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 20px;
+}
+
+.token-stat-box {
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.token-stat-box.active-call-box {
+    border-color: rgba(62, 207, 142, 0.28);
+    background: linear-gradient(180deg, rgba(62, 207, 142, 0.04) 0%, var(--bg-surface-2) 100%);
+}
+
+.token-stat-box.pulse-update {
+    border-color: var(--brand-emerald);
+    box-shadow: 0 0 16px rgba(62, 207, 142, 0.18);
+}
+
+.token-stat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.token-stat-main {
+    font-family: var(--font-mono);
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.15;
+    color: var(--text-strong);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+
+.token-stat-sub {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-default);
+    font-variant-numeric: tabular-nums;
+}
+
+.token-modality-row {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    padding-top: 4px;
+    border-top: 1px dashed var(--border-subtle);
+    font-variant-numeric: tabular-nums;
 }

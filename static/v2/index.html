@@ -156,6 +156,71 @@
                 </div>
             </div>
 
+            <!-- Token Usage Telemetry Card (Session & Per-Call) -->
+            <div class="supabase-card" id="token-usage-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                        <span>Token Usage Telemetry</span>
+                    </div>
+                    <span class="card-badge" id="v2-token-turns-badge">0 calls · 0 turns</span>
+                </div>
+                <div class="card-body token-stats-grid">
+                    <!-- Overall Session Stats -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">SESSION TOTAL</span>
+                            <span class="card-badge" id="v2-session-ctx-badge" title="Latest context window size">Ctx: 0</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-session-total">0</div>
+                        <div class="token-stat-sub" id="v2-session-breakdown">
+                            In: 0 · Out: 0 · Think: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-session-modalities" title="Billed input per modality (Live API re-bills context every turn). 'new' = audio not seen in a prior turn.">
+                            Audio In: 0 (new 0) · Image In: 0 · Text In: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-session-modalities-out">
+                            Audio Out: 0 · Cache: 0 · Camera: 0
+                        </div>
+                    </div>
+
+                    <!-- Per-Call (One Back-and-Forth) Stats -->
+                    <div class="token-stat-box active-call-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">PER CALL (SPEAKER ↔ VOICE)</span>
+                            <span class="card-badge" id="v2-call-steps-badge" title="LLM turns within this back-and-forth call">0 steps</span>
+                        </div>
+                        <div class="token-stat-main" style="color: var(--brand-emerald);" id="v2-call-total">0</div>
+                        <div class="token-stat-sub" id="v2-call-breakdown">
+                            In: 0 · Out: 0 · Think: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-call-modalities">
+                            Audio In: 0 (new 0) · Image In: 0 · Text In: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-call-modalities-out">
+                            Audio Out: 0 · Cache: 0 · Camera: 0
+                        </div>
+                    </div>
+
+                    <!-- Camera Check Sub-Agent Stats (generate_content, outside the Live session) -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">CAMERA CHECKS (SUB-AGENT)</span>
+                            <span class="card-badge" id="v2-camera-checks-badge" title="Camera analyses run by check_camera">0 checks</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-camera-total">0</div>
+                        <div class="token-stat-sub" id="v2-camera-breakdown">
+                            In: 0 · Out: 0 · Think: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-camera-modalities">
+                            Image In: 0 · Text In: 0 · Cache: 0
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </aside>
 
         <!-- Right Column: Smart Infrastructure & Tool Terminal -->

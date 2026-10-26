@@ -53,7 +53,9 @@ logger = logging.getLogger(__name__)
 
 # Structured CSV Usage Logger Setup
 TRACE_FILE = "gemini_usage_trace.log"
-CSV_HEADER = "timestamp,user_id,session_id,total_token_count,prompt_token_count,prompt_tokens_details,candidates_token_count,candidates_tokens_details,cached_content_token_count,cache_tokens_details,thoughts_token_count\n"
+CSV_HEADER = "timestamp,user_id,session_id,total_token_count,prompt_token_count,prompt_tokens_details,candidates_token_count,candidates_tokens_details,cached_content_token_count,cache_tokens_details,thoughts_token_count,tool_use_prompt_token_count\n"
+# Sub-agent rows (prefix "subagent_usage") use this column layout:
+# timestamp,user_id,session_id,source,model,camera_id,total_token_count,prompt_token_count,image_in_token_count,text_in_token_count,candidates_token_count,thoughts_token_count,cached_content_token_count
 
 # OVERWRITE MODE: Unconditionally open with "w" to wipe old data and write a fresh header
 with open(TRACE_FILE, "w", encoding="utf-8") as f:
@@ -95,6 +97,7 @@ import config
 from config import AgentConfig
 from agents import get_aris_agent, toolInstance
 from voiceconfig import VoiceConfig
+from usage_sink import bind_session_queue
 
 app_name = config.APP_NAME
 agent_config = config.agent_config
@@ -570,13 +573,14 @@ async def websocket_endpoint(
                 cand_tokens = getattr(usage, 'candidates_token_count', 0) or 0
                 cached_tokens = getattr(usage, 'cached_content_token_count', 0) or 0
                 thoughts_tokens = getattr(usage, 'thoughts_token_count', 0) or 0
+                tool_use_tokens = getattr(usage, 'tool_use_prompt_token_count', 0) or 0
 
                 # 3. Spreadsheet-ready CSV Row for the actual background trace log file 
                 csv_fields = [
                     str(timestamp_str), str(user_id), str(session_id),
                     str(total_tokens), str(prompt_tokens), f'"{p_details}"',
                     str(cand_tokens), f'"{cand_details}"', str(cached_tokens),
-                    f'"{c_details}"', str(thoughts_tokens)
+                    f'"{c_details}"', str(thoughts_tokens), str(tool_use_tokens)
                 ]
                 csv_row = ",".join(csv_fields)
                 
@@ -590,10 +594,27 @@ async def websocket_endpoint(
                     f" prompt_token_count {prompt_tokens}; {p_details},"
                     f" candidates_token_count {cand_tokens}; {cand_details},"
                     f" cached_content_token_count {cached_tokens}; {c_details},"
-                    f" thoughts_token_count {thoughts_tokens}"
+                    f" thoughts_token_count {thoughts_tokens},"
+                    f" tool_use_prompt_token_count {tool_use_tokens}"
                 )                
                                 
                 logger.info(csv_row_display)
+
+                # 5. Send dedicated normalized token usage event to frontend UI
+                usage_payload = {
+                    "type": "token_usage",
+                    "timestamp": timestamp_str,
+                    "totalTokenCount": total_tokens,
+                    "promptTokenCount": prompt_tokens,
+                    "candidatesTokenCount": cand_tokens,
+                    "cachedContentTokenCount": cached_tokens,
+                    "thoughtsTokenCount": thoughts_tokens,
+                    "toolUsePromptTokenCount": tool_use_tokens,
+                    "promptTokensDetails": p_details,
+                    "candidatesTokensDetails": cand_details,
+                    "cacheTokensDetails": c_details,
+                }
+                await websocket.send_text(json.dumps(usage_payload))
             # =========================================================================                                 
             
             # Always forward the raw event to the frontend (for audio), everything else is JSON
@@ -619,6 +640,34 @@ async def websocket_endpoint(
     # ========================================
     # Run the Concurrent Tasks
     # ========================================
+    async def subagent_usage_task() -> None:
+        """Forwards sub-agent (e.g. camera check) token usage to the UI and trace log."""
+        while True:
+            record = await subagent_usage_queue.get()
+            timestamp_str = time.strftime("%Y-%m-%d %H:%M:%S")
+            csv_fields = [
+                timestamp_str, str(user_id), str(session_id),
+                str(record.get("source", "")), str(record.get("model", "")),
+                str(record.get("cameraId", "")),
+                str(record["totalTokenCount"]), str(record["promptTokenCount"]),
+                str(record["imageInTokenCount"]), str(record["textInTokenCount"]),
+                str(record["candidatesTokenCount"]), str(record["thoughtsTokenCount"]),
+                str(record["cachedContentTokenCount"]),
+            ]
+            usage_logger.info(f"subagent_usage {','.join(csv_fields)}")
+            logger.info(f"SUBAGENT USAGE {record}")
+            try:
+                await websocket.send_text(json.dumps(
+                    {"type": "subagent_token_usage", "timestamp": timestamp_str, **record}
+                ))
+            except Exception as e:
+                logger.warning(f"Could not forward sub-agent usage to frontend: {e}")
+
+    # Bind the per-session sub-agent usage queue BEFORE spawning tasks so that
+    # tool executions inside run_live() inherit it via contextvars.
+    subagent_usage_queue = bind_session_queue()
+    usage_forwarder = asyncio.create_task(subagent_usage_task())
+
     try:
         logger.info("Starting asyncio.gather for tasks")
         await asyncio.gather(
@@ -633,6 +682,7 @@ async def websocket_endpoint(
         logger.error(f"Unexpected error: {e}", exc_info=True)
     finally:
         logger.info("Closing live_request_queue")
+        usage_forwarder.cancel()
         live_request_queue.close()
 
 if __name__ == "__main__":

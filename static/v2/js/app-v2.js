@@ -87,6 +87,271 @@ const activeDevicesEl = document.getElementById("telemetry-active");
 const climateActiveEl = document.getElementById("telemetry-climate");
 const camerasCountEl = document.getElementById("telemetry-cameras");
 
+// Token Usage Telemetry DOM Elements
+const tokenTurnsBadgeEl = document.getElementById("v2-token-turns-badge");
+const sessionCtxBadgeEl = document.getElementById("v2-session-ctx-badge");
+const sessionTotalEl = document.getElementById("v2-session-total");
+const sessionBreakdownEl = document.getElementById("v2-session-breakdown");
+const sessionModalitiesEl = document.getElementById("v2-session-modalities");
+const sessionModalitiesOutEl = document.getElementById("v2-session-modalities-out");
+const callStepsBadgeEl = document.getElementById("v2-call-steps-badge");
+const callTotalEl = document.getElementById("v2-call-total");
+const callBreakdownEl = document.getElementById("v2-call-breakdown");
+const callModalitiesEl = document.getElementById("v2-call-modalities");
+const callModalitiesOutEl = document.getElementById("v2-call-modalities-out");
+const cameraChecksBadgeEl = document.getElementById("v2-camera-checks-badge");
+const cameraTotalEl = document.getElementById("v2-camera-total");
+const cameraBreakdownEl = document.getElementById("v2-camera-breakdown");
+const cameraModalitiesEl = document.getElementById("v2-camera-modalities");
+
+// =========================================================================
+// Token Usage State & Helpers (Session, Per-Call & Camera Sub-Agent)
+//
+// Billing semantics: the Live API re-processes (and bills) the entire context
+// window on every model turn, so per-turn prompt counts — including per-modality
+// AUDIO/IMAGE/TEXT — are SUMMED. "audioInNew" tracks only audio that was not
+// present in the previous turn's context (informational, not billed).
+// Camera checks are separate generate_content calls made by the check_camera
+// tool; they are added to Session/Call totals and broken out on their own.
+// =========================================================================
+
+function emptyUsageBucket() {
+    return {
+        total: 0, prompt: 0, output: 0, thoughts: 0, cached: 0, toolUse: 0,
+        audioIn: 0, audioInNew: 0, imageIn: 0, textIn: 0, audioOut: 0,
+        cameraTotal: 0,
+    };
+}
+
+const sessionUsage = Object.assign(emptyUsageBucket(), {
+    latestContext: 0,
+    prevPrompt: 0,
+    prevAudioIn: 0,
+    calls: 0,
+    turns: 0
+});
+
+const callUsage = Object.assign(emptyUsageBucket(), {
+    netPromptDelta: 0,
+    steps: 0
+});
+
+const cameraUsage = {
+    total: 0, prompt: 0, output: 0, thoughts: 0, cached: 0,
+    imageIn: 0, textIn: 0, checks: 0
+};
+
+let callHasAiActivity = false;
+let userUtteranceActive = false;
+let turnInProgress = false;
+
+function parseModalityTokens(detailsStr) {
+    const result = { TEXT: 0, AUDIO: 0, IMAGE: 0 };
+    if (!detailsStr || typeof detailsStr !== "string") return result;
+    detailsStr.split("|").forEach((pair) => {
+        const [rawMod, rawCount] = pair.split(":");
+        if (!rawMod) return;
+        const count = parseInt(rawCount, 10) || 0;
+        const modUpper = rawMod.toUpperCase();
+        if (modUpper.includes("AUDIO")) result.AUDIO += count;
+        else if (modUpper.includes("TEXT")) result.TEXT += count;
+        else if (modUpper.includes("IMAGE") || modUpper.includes("VIDEO")) result.IMAGE += count;
+    });
+    return result;
+}
+
+function formatNum(n) {
+    return (n || 0).toLocaleString("en-US");
+}
+
+function inputModalitiesLabel(u) {
+    return `Audio In: ${formatNum(u.audioIn)} (new ${formatNum(u.audioInNew)}) · Image In: ${formatNum(u.imageIn)} · Text In: ${formatNum(u.textIn)}`;
+}
+
+function outputModalitiesLabel(u) {
+    const toolUse = u.toolUse > 0 ? ` · Tool Use: ${formatNum(u.toolUse)}` : "";
+    return `Audio Out: ${formatNum(u.audioOut)} · Cache: ${formatNum(u.cached)} · Camera: ${formatNum(u.cameraTotal)}${toolUse}`;
+}
+
+function renderTokenUsageUI(pulseCallBox = false) {
+    if (tokenTurnsBadgeEl) {
+        tokenTurnsBadgeEl.innerText = `${sessionUsage.calls} ${sessionUsage.calls === 1 ? "call" : "calls"} · ${sessionUsage.turns} ${sessionUsage.turns === 1 ? "turn" : "turns"}`;
+    }
+    if (sessionCtxBadgeEl) {
+        sessionCtxBadgeEl.innerText = `Ctx: ${formatNum(sessionUsage.latestContext)}`;
+    }
+    if (sessionTotalEl) {
+        sessionTotalEl.innerText = formatNum(sessionUsage.total);
+    }
+    if (sessionBreakdownEl) {
+        sessionBreakdownEl.innerText = `In: ${formatNum(sessionUsage.prompt)} · Out: ${formatNum(sessionUsage.output)} · Think: ${formatNum(sessionUsage.thoughts)}`;
+    }
+    if (sessionModalitiesEl) {
+        sessionModalitiesEl.innerText = inputModalitiesLabel(sessionUsage);
+    }
+    if (sessionModalitiesOutEl) {
+        sessionModalitiesOutEl.innerText = outputModalitiesLabel(sessionUsage);
+    }
+
+    if (callStepsBadgeEl) {
+        const callLabel = sessionUsage.calls > 0 ? `Call #${sessionUsage.calls} · ` : "";
+        callStepsBadgeEl.innerText = `${callLabel}${callUsage.steps} ${callUsage.steps === 1 ? "step" : "steps"}`;
+    }
+    if (callTotalEl) {
+        callTotalEl.innerText = formatNum(callUsage.total);
+    }
+    if (callBreakdownEl) {
+        const inLabel = callUsage.prompt > 0
+            ? `${formatNum(callUsage.prompt)} (Δ ${formatNum(callUsage.netPromptDelta)})`
+            : "0";
+        callBreakdownEl.innerText = `In: ${inLabel} · Out: ${formatNum(callUsage.output)} · Think: ${formatNum(callUsage.thoughts)}`;
+    }
+    if (callModalitiesEl) {
+        callModalitiesEl.innerText = inputModalitiesLabel(callUsage);
+    }
+    if (callModalitiesOutEl) {
+        callModalitiesOutEl.innerText = outputModalitiesLabel(callUsage);
+    }
+
+    if (cameraChecksBadgeEl) {
+        cameraChecksBadgeEl.innerText = `${cameraUsage.checks} ${cameraUsage.checks === 1 ? "check" : "checks"}`;
+    }
+    if (cameraTotalEl) {
+        cameraTotalEl.innerText = formatNum(cameraUsage.total);
+    }
+    if (cameraBreakdownEl) {
+        cameraBreakdownEl.innerText = `In: ${formatNum(cameraUsage.prompt)} · Out: ${formatNum(cameraUsage.output)} · Think: ${formatNum(cameraUsage.thoughts)}`;
+    }
+    if (cameraModalitiesEl) {
+        cameraModalitiesEl.innerText = `Image In: ${formatNum(cameraUsage.imageIn)} · Text In: ${formatNum(cameraUsage.textIn)} · Cache: ${formatNum(cameraUsage.cached)}`;
+    }
+
+    if (pulseCallBox && callTotalEl) {
+        const box = callTotalEl.closest(".token-stat-box");
+        if (box) {
+            box.classList.remove("pulse-update");
+            void box.offsetWidth;
+            box.classList.add("pulse-update");
+            setTimeout(() => box.classList.remove("pulse-update"), 600);
+        }
+    }
+}
+
+function resetSessionUsage() {
+    Object.assign(sessionUsage, emptyUsageBucket(), {
+        latestContext: 0, prevPrompt: 0, prevAudioIn: 0, calls: 0, turns: 0
+    });
+    Object.assign(callUsage, emptyUsageBucket(), { netPromptDelta: 0, steps: 0 });
+    Object.assign(cameraUsage, {
+        total: 0, prompt: 0, output: 0, thoughts: 0, cached: 0,
+        imageIn: 0, textIn: 0, checks: 0
+    });
+    callHasAiActivity = false;
+    userUtteranceActive = false;
+    turnInProgress = false;
+    renderTokenUsageUI(false);
+}
+
+function startNewCall() {
+    sessionUsage.calls += 1;
+    Object.assign(callUsage, emptyUsageBucket(), { netPromptDelta: 0, steps: 0 });
+    callHasAiActivity = false;
+    renderTokenUsageUI(true);
+}
+
+function addToBucket(bucket, d) {
+    for (const key of Object.keys(d)) {
+        bucket[key] = (bucket[key] || 0) + d[key];
+    }
+}
+
+// Live API usage (one event per model turn)
+function handleTokenUsageEvent(payload) {
+    const total = payload.totalTokenCount || 0;
+    const prompt = payload.promptTokenCount || 0;
+    const output = payload.candidatesTokenCount || 0;
+    const thoughts = payload.thoughtsTokenCount || 0;
+    const cached = payload.cachedContentTokenCount || 0;
+    const toolUse = payload.toolUsePromptTokenCount || 0;
+
+    const pMod = parseModalityTokens(payload.promptTokensDetails);
+    const cMod = parseModalityTokens(payload.candidatesTokensDetails);
+
+    // Incremental deltas of the cumulative context (informational only)
+    const audioInDelta = Math.max(0, pMod.AUDIO - sessionUsage.prevAudioIn);
+    const promptDelta = Math.max(0, prompt - sessionUsage.prevPrompt);
+    if (pMod.AUDIO > 0) sessionUsage.prevAudioIn = pMod.AUDIO;
+    if (prompt > 0) sessionUsage.prevPrompt = prompt;
+
+    const delta = {
+        total, prompt, output, thoughts, cached, toolUse,
+        audioIn: pMod.AUDIO,          // billed: full audio context re-processed each turn
+        audioInNew: audioInDelta,
+        imageIn: pMod.IMAGE,
+        textIn: pMod.TEXT,
+        audioOut: cMod.AUDIO,
+    };
+
+    // 1. Always accumulate into Session Total
+    addToBucket(sessionUsage, delta);
+    if (prompt > 0) sessionUsage.latestContext = prompt;
+    sessionUsage.turns += 1;
+
+    // 2. Accumulate into Per-Call stats once the user has initiated a call
+    if (sessionUsage.calls > 0) {
+        addToBucket(callUsage, delta);
+        callUsage.netPromptDelta += promptDelta;
+        callUsage.steps += 1;
+        callHasAiActivity = true;
+    }
+
+    renderTokenUsageUI(sessionUsage.calls > 0);
+
+    const scopeLabel = sessionUsage.calls > 0
+        ? `Call #${sessionUsage.calls} (Step ${callUsage.steps})`
+        : `Session Handshake`;
+    logTerminal(
+        "TOKENS",
+        `${scopeLabel}: +${formatNum(total)} tokens (In: ${formatNum(prompt)} [Δ ${formatNum(promptDelta)}; Audio ${formatNum(pMod.AUDIO)}, Image ${formatNum(pMod.IMAGE)}, Text ${formatNum(pMod.TEXT)}], Out: ${formatNum(output)}, Think: ${formatNum(thoughts)}) | Session Total: ${formatNum(sessionUsage.total)}`,
+        false
+    );
+}
+
+// Camera check sub-agent usage (one event per camera analysed)
+function handleSubagentTokenUsageEvent(payload) {
+    const d = {
+        total: payload.totalTokenCount || 0,
+        prompt: payload.promptTokenCount || 0,
+        output: payload.candidatesTokenCount || 0,
+        thoughts: payload.thoughtsTokenCount || 0,
+        cached: payload.cachedContentTokenCount || 0,
+        imageIn: payload.imageInTokenCount || 0,
+        textIn: payload.textInTokenCount || 0,
+    };
+
+    addToBucket(cameraUsage, d);
+    cameraUsage.checks += 1;
+
+    // Fold into Session / Call totals (no audio for the vision sub-agent)
+    const rollup = {
+        total: d.total, prompt: d.prompt, output: d.output, thoughts: d.thoughts,
+        cached: d.cached, imageIn: d.imageIn, textIn: d.textIn, cameraTotal: d.total,
+    };
+    addToBucket(sessionUsage, rollup);
+    if (sessionUsage.calls > 0) {
+        addToBucket(callUsage, rollup);
+        callHasAiActivity = true;
+    }
+
+    renderTokenUsageUI(sessionUsage.calls > 0);
+
+    logTerminal(
+        "TOKENS",
+        `Camera ${payload.cameraId || "?"} (${payload.model || "sub-agent"}): +${formatNum(d.total)} tokens (In: ${formatNum(d.prompt)} [Image ${formatNum(d.imageIn)}, Text ${formatNum(d.textIn)}], Out: ${formatNum(d.output)}, Think: ${formatNum(d.thoughts)}) | Session Total: ${formatNum(sessionUsage.total)}`,
+        false
+    );
+}
+
 // =========================================================================
 // UI State Updates
 // =========================================================================
@@ -141,7 +406,9 @@ function logTerminal(tag, message, isResponse = false) {
     const now = new Date();
     const timeStr = now.toTimeString().split(" ")[0];
 
-    const tagClass = isResponse ? "stream-tag response" : "stream-tag call";
+    const tagClass = tag === "TOKENS"
+        ? "stream-tag usage"
+        : (isResponse ? "stream-tag response" : "stream-tag call");
     row.innerHTML = `
         <span class="stream-time">${timeStr}</span>
         <span class="${tagClass}">${tag}</span>
@@ -430,6 +697,7 @@ async function connect() {
     websocket.onopen = () => {
         isConnected = true;
         isConnecting = false;
+        resetSessionUsage();
         updateConnectionUI(true);
         logTerminal("SYS", "Gemini Live BIDI stream established.", true);
     };
@@ -439,6 +707,7 @@ async function connect() {
     websocket.onmessage = (event) => {
         // Raw Audio Binary Stream
         if (event.data instanceof ArrayBuffer) {
+            callHasAiActivity = true;
             if (audioPlayerNode) {
                 audioPlayerNode.port.postMessage(event.data);
                 setAgentState("SPEAKING");
@@ -454,8 +723,25 @@ async function connect() {
             return;
         }
 
+        // Dedicated Token Usage Event from main.py
+        if (adkEvent.type === "token_usage") {
+            handleTokenUsageEvent(adkEvent);
+            return;
+        }
+
+        // Camera check sub-agent usage (side channel from main.py)
+        if (adkEvent.type === "subagent_token_usage") {
+            handleSubagentTokenUsageEvent(adkEvent);
+            return;
+        }
+
         // User transcription
         if (adkEvent.inputTranscription && adkEvent.inputTranscription.text) {
+            if (!userUtteranceActive && !turnInProgress && (sessionUsage.calls === 0 || callHasAiActivity)) {
+                startNewCall();
+            }
+            userUtteranceActive = !adkEvent.inputTranscription.finished;
+
             const txt = adkEvent.inputTranscription.text;
             userTranscriptBox.innerText = `"${txt}"`;
             if (!adkEvent.inputTranscription.finished) {
@@ -465,6 +751,7 @@ async function connect() {
 
         // Agent transcription
         if (adkEvent.outputTranscription && adkEvent.outputTranscription.text) {
+            callHasAiActivity = true;
             const txt = adkEvent.outputTranscription.text;
             if (adkEvent.outputTranscription.finished || !adkEvent.partial) {
                 aiTranscriptBox.innerText = txt;
@@ -480,12 +767,16 @@ async function connect() {
         if (adkEvent.content && adkEvent.content.parts) {
             adkEvent.content.parts.forEach((part, index) => {
                 if (part.functionCall) {
+                    callHasAiActivity = true;
+                    turnInProgress = true;
                     const name = part.functionCall.name;
                     const args = part.functionCall.args || {};
                     logTerminal("CALL", `${name}(${JSON.stringify(args)})`, false);
                 }
 
                 if (part.functionResponse) {
+                    callHasAiActivity = true;
+                    turnInProgress = true;
                     const name = part.functionResponse.name;
                     const resp = part.functionResponse.response;
                     logTerminal("RESULT", `${name} -> ${JSON.stringify(resp)}`, true);
@@ -509,6 +800,8 @@ async function connect() {
         // Turn complete
         if (adkEvent.turnComplete) {
             aiTurnActive = false;
+            userUtteranceActive = false;
+            turnInProgress = false;
             if (audioPlayerNode) {
                 audioPlayerNode.port.postMessage({ command: "endOfTurn" });
             } else {
@@ -522,6 +815,8 @@ async function connect() {
                 audioPlayerNode.port.postMessage({ command: "endOfAudio" });
             }
             aiTurnActive = false;
+            userUtteranceActive = false;
+            turnInProgress = false;
             setAgentState("LISTENING");
         }
     };
@@ -530,7 +825,10 @@ async function connect() {
         isConnected = false;
         isConnecting = false;
         updateConnectionUI(false);
-        logTerminal("SYS", "WebSocket closed.");
+        logTerminal(
+            "SYS",
+            `WebSocket closed. Final Session Tokens: ${formatNum(sessionUsage.total)} across ${sessionUsage.calls} calls (${sessionUsage.turns} model turns).`
+        );
 
         if (micStream) {
             micStream.getTracks().forEach(t => t.stop());
@@ -555,6 +853,8 @@ function sendText() {
     const text = chatInput.value.trim();
     if (!text) return;
     if (websocket && websocket.readyState === WebSocket.OPEN && isConnected) {
+        startNewCall();
+        userUtteranceActive = false;
         websocket.send(JSON.stringify({ type: "text", text: text }));
         userTranscriptBox.innerText = `"${text}"`;
         chatInput.value = "";

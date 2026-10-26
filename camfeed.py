@@ -13,6 +13,7 @@ from google.genai import types
 from camsim import CAM_SIM
 
 from config import agent_config
+from usage_sink import build_usage_record, report_subagent_usage
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +228,19 @@ async def analyze_camera_feed(device_id: str, user_query: str) -> str:
             generation_config,
         )
         response = await loop.run_in_executor(None, sync_fn)
+
+        # 11b. Report sub-agent token usage via the session side channel
+        # (kept out of final_payload so the Live model doesn't ingest it)
+        if response.usage_metadata:
+            try:
+                report_subagent_usage(build_usage_record(
+                    source="check_camera",
+                    model=agent_config.SUBAGENT_MODEL,
+                    usage_metadata=response.usage_metadata,
+                    cameraId=device_id,
+                ))
+            except Exception as e:
+                logger.warning(f"Failed to report camera usage for {device_id}: {e}")
         
         if not response.text:
             logger.error(f"ERROR IN ANALYZE CAMERA FEED - {device_id} \n LLM Response - {response}\n")
