@@ -1354,3 +1354,65 @@ code, pre, .mono {
 .panel-collapsed > .section-title {
     margin-bottom: 0;
 }
+
+/* ==========================================================================
+   Custom Vocabulary Panel
+   ========================================================================== */
+.vocab-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px 20px;
+}
+.vocab-input {
+    width: 100%;
+    min-height: 84px;
+    resize: vertical;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    box-sizing: border-box;
+}
+.vocab-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.vocab-status {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+}
+.vocab-status.pending {
+    color: #f5a524;
+}
+.vocab-clear {
+    height: 26px;
+    font-size: 11px;
+    padding: 0 10px;
+}
+.vocab-defaults {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 8px;
+}
+.vocab-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.vocab-chip {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface-3);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-default);
+}
+.vocab-chip.user {
+    border-color: rgba(62, 207, 142, 0.45);
+    color: var(--brand-emerald);
+}

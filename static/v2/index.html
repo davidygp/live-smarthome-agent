@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Supabase Design System Stylesheet -->
-    <link rel="stylesheet" href="/live-smarthome-agent/static/v2/css/styles.css?v=panel-toggle-2">
+    <link rel="stylesheet" href="/live-smarthome-agent/static/v2/css/styles.css?v=custom-vocab-1">
     <!-- Modular ADK & Live API Controller -->
     <script src="/live-smarthome-agent/static/v2/js/app-v2.js" type="module"></script>
 </head>
@@ -220,6 +220,36 @@
                         <div class="token-modality-row" id="v2-camera-modalities">
                             Image In: 0 · Text In: 0 · Cache: 0
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom Vocabulary Card (ASR biasing via input_audio_transcription.custom_vocabulary) -->
+            <div class="supabase-card" id="custom-vocab-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                        </svg>
+                        <span>Custom Vocabulary</span>
+                        <button type="button" class="panel-toggle" data-collapse-panel="custom-vocab-card" aria-expanded="true" aria-controls="custom-vocab-body" title="Collapse panel">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                    </div>
+                    <span class="card-badge" id="v2-vocab-badge" title="User terms · total terms sent to the Live API">0 custom · 0 total</span>
+                </div>
+                <div class="card-body vocab-body collapsible-body" id="custom-vocab-body">
+                    <label class="telemetry-label" for="custom-vocab-input">YOUR TERMS (ONE PER LINE OR COMMA-SEPARATED)</label>
+                    <textarea id="custom-vocab-input" class="supabase-input vocab-input" rows="4" spellcheck="false"
+                        placeholder="e.g.&#10;Somchai&#10;Backyard Sprinkler&#10;Siam Paragon"></textarea>
+                    <div class="vocab-actions">
+                        <span class="vocab-status" id="v2-vocab-status">Empty: only the built-in terms are used.</span>
+                        <button type="button" class="btn-secondary vocab-clear" id="custom-vocab-clear">Clear</button>
+                    </div>
+                    <div class="token-modality-row vocab-defaults">
+                        <span class="telemetry-label">BUILT-IN (ALWAYS SENT)</span>
+                        <div class="vocab-chips" id="v2-vocab-defaults"></div>
                     </div>
                 </div>
             </div>

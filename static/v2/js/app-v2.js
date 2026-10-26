@@ -394,7 +394,9 @@ function updateConnectionUI(connected) {
         if (userTranscriptBox) userTranscriptBox.innerText = "Press connect, then speak...";
         if (aiTranscriptBox) aiTranscriptBox.innerText = "";
         if (transcriptBadge) transcriptBadge.innerText = "OFFLINE";
+        vocabState.appliedKey = null;
     }
+    renderVocabularyUI();
 }
 
 // Log into Supabase Terminal Stream
@@ -686,6 +688,14 @@ async function connect() {
         affective_dialog: affective,
         proactive_audio: proactive
     });
+
+    // Custom vocabulary: only send user terms; the server appends them to its defaults
+    const userVocab = getUserVocabTerms();
+    if (userVocab.length > 0) {
+        params.set("custom_vocabulary", JSON.stringify(userVocab));
+    }
+    vocabState.appliedKey = JSON.stringify(userVocab);
+    logTerminal("SYS", `Custom vocabulary: ${vocabState.defaults.length} built-in + ${userVocab.length} custom term(s)${userVocab.length ? ` [${userVocab.join(", ")}]` : ""}`);
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/live-smarthome-agent/ws/${userId}/${sessionId}?${params.toString()}`;
@@ -1119,6 +1129,103 @@ window.switchUiVersion = function(version) {
 // =========================================================================
 
 // =========================================================================
+// Custom Vocabulary (appended to SMARTHOME_CUSTOM_VOCABULARY server-side and
+// sent as input_audio_transcription.custom_vocabulary at session start)
+// =========================================================================
+const VOCAB_STORAGE_KEY = "v2-custom-vocabulary";
+const vocabState = {
+    defaults: [],
+    maxTerms: 100,
+    maxTermLength: 80,
+    appliedKey: null,   // JSON of user terms sent with the active connection
+};
+
+// Mirrors build_custom_vocabulary() in main.py so the UI counts match the server
+function getUserVocabTerms() {
+    const input = document.getElementById("custom-vocab-input");
+    if (!input) return [];
+    const seen = new Set(vocabState.defaults.map((t) => t.toLowerCase()));
+    const terms = [];
+    for (const raw of input.value.replace(/,/g, "\n").split("\n")) {
+        if (terms.length >= vocabState.maxTerms) break;
+        const term = raw.split(/\s+/).filter(Boolean).join(" ").slice(0, vocabState.maxTermLength);
+        if (!term || seen.has(term.toLowerCase())) continue;
+        seen.add(term.toLowerCase());
+        terms.push(term);
+    }
+    return terms;
+}
+
+function renderVocabularyUI() {
+    const userTerms = getUserVocabTerms();
+    const badge = document.getElementById("v2-vocab-badge");
+    const status = document.getElementById("v2-vocab-status");
+    const chips = document.getElementById("v2-vocab-defaults");
+
+    if (badge) {
+        badge.innerText = `${userTerms.length} custom · ${vocabState.defaults.length + userTerms.length} total`;
+    }
+    if (chips) {
+        chips.innerHTML = "";
+        const addChip = (text, isUser) => {
+            const chip = document.createElement("span");
+            chip.className = isUser ? "vocab-chip user" : "vocab-chip";
+            chip.textContent = text;   // textContent: never interpret user input as HTML
+            chips.appendChild(chip);
+        };
+        vocabState.defaults.forEach((t) => addChip(t, false));
+        userTerms.forEach((t) => addChip(t, true));
+    }
+    if (status) {
+        const key = JSON.stringify(userTerms);
+        const pending = isConnected && vocabState.appliedKey !== null && key !== vocabState.appliedKey;
+        status.classList.toggle("pending", pending);
+        if (pending) {
+            status.innerText = "Changed: reconnect to apply.";
+        } else if (isConnected && vocabState.appliedKey !== null) {
+            status.innerText = `Applied to current session (${userTerms.length} custom).`;
+        } else if (userTerms.length === 0) {
+            status.innerText = "Empty: only the built-in terms are used.";
+        } else {
+            status.innerText = `${userTerms.length} term(s) will be appended on connect.`;
+        }
+    }
+}
+
+async function initCustomVocabulary() {
+    const input = document.getElementById("custom-vocab-input");
+    const clearBtn = document.getElementById("custom-vocab-clear");
+    if (!input) return;
+
+    try { input.value = localStorage.getItem(VOCAB_STORAGE_KEY) || ""; } catch { /* storage unavailable */ }
+
+    input.addEventListener("input", () => {
+        try { localStorage.setItem(VOCAB_STORAGE_KEY, input.value); } catch { /* ignore */ }
+        renderVocabularyUI();
+    });
+    if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+            input.value = "";
+            try { localStorage.removeItem(VOCAB_STORAGE_KEY); } catch { /* ignore */ }
+            renderVocabularyUI();
+        });
+    }
+
+    try {
+        const res = await fetch("/live-smarthome-agent/api/config");
+        if (res.ok) {
+            const cfg = await res.json();
+            vocabState.defaults = Array.isArray(cfg.default_custom_vocabulary) ? cfg.default_custom_vocabulary : [];
+            vocabState.maxTerms = cfg.max_user_vocab_terms || vocabState.maxTerms;
+            vocabState.maxTermLength = cfg.max_user_vocab_term_length || vocabState.maxTermLength;
+        }
+    } catch (e) {
+        console.warn("Could not load default custom vocabulary:", e);
+    }
+    renderVocabularyUI();
+}
+
+// =========================================================================
 // Collapsible Panel Toggles (state persisted per panel in localStorage)
 // =========================================================================
 function setPanelCollapsed(panel, toggle, collapsed) {
@@ -1152,6 +1259,7 @@ function initPanelToggles() {
 
 document.addEventListener("DOMContentLoaded", () => {
     initPanelToggles();
+    initCustomVocabulary();
     if (connectBtn) connectBtn.addEventListener("click", connect);
     if (endBtn) endBtn.addEventListener("click", disconnect);
     if (orbWrapper) orbWrapper.addEventListener("click", () => {

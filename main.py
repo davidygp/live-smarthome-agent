@@ -148,6 +148,42 @@ SMARTHOME_CUSTOM_VOCABULARY = [
     "Party mode",
 ]
 
+# Guardrails for user-supplied vocabulary (sent from the v2 UI as a query param)
+MAX_USER_VOCAB_TERMS = 100
+MAX_USER_VOCAB_TERM_LENGTH = 80
+
+def build_custom_vocabulary(user_vocab_raw: Optional[str]) -> list[str]:
+    """Returns SMARTHOME_CUSTOM_VOCABULARY with user terms appended.
+
+    `user_vocab_raw` is a JSON array of strings (preferred) or a newline/comma
+    separated string. Terms are trimmed, length-capped, and de-duplicated
+    case-insensitively against the defaults and each other. Empty/invalid input
+    yields the defaults unchanged.
+    """
+    vocabulary = list(SMARTHOME_CUSTOM_VOCABULARY)
+    if not user_vocab_raw or not user_vocab_raw.strip():
+        return vocabulary
+
+    try:
+        parsed = json.loads(user_vocab_raw)
+        candidates = parsed if isinstance(parsed, list) else [str(parsed)]
+    except (json.JSONDecodeError, TypeError):
+        candidates = user_vocab_raw.replace(",", "\n").splitlines()
+
+    seen = {term.casefold() for term in vocabulary}
+    added = 0
+    for item in candidates:
+        if added >= MAX_USER_VOCAB_TERMS:
+            logger.warning(f"Custom vocabulary truncated at {MAX_USER_VOCAB_TERMS} user terms")
+            break
+        term = " ".join(str(item).split())[:MAX_USER_VOCAB_TERM_LENGTH]
+        if not term or term.casefold() in seen:
+            continue
+        seen.add(term.casefold())
+        vocabulary.append(term)
+        added += 1
+    return vocabulary
+
 def format_modality_details(details_list) -> str:
     """Flattens and alphabetically sorts a list of ModalityTokenCount objects 
     into a consistent safe CSV column format.
@@ -267,6 +303,9 @@ async def get_app_config():
         "document": "default",
         "orchestrator_model": agent_config.ORCHESTRATOR_MODEL,
         "subagent_model": agent_config.SUBAGENT_MODEL,
+        "default_custom_vocabulary": SMARTHOME_CUSTOM_VOCABULARY,
+        "max_user_vocab_terms": MAX_USER_VOCAB_TERMS,
+        "max_user_vocab_term_length": MAX_USER_VOCAB_TERM_LENGTH,
     }
 
 @app.get("/live-smarthome-agent/api/devices")
@@ -377,7 +416,8 @@ async def websocket_endpoint(
     session_id: str,
     voice: Optional[str] = "aoede",              # Defaults to 'aoede'
     affective_dialog: Optional[bool] = False,    # Auto-converts "true" to True
-    proactive_audio: Optional[bool] = False      # Auto-converts "false" to False    
+    proactive_audio: Optional[bool] = False,     # Auto-converts "false" to False    
+    custom_vocabulary: Optional[str] = None      # JSON array of extra ASR terms from the UI
 ) -> None:    
     
     logger.info(
@@ -413,6 +453,14 @@ async def websocket_endpoint(
     # ========================================
 
     response_modalities = ["AUDIO"]
+
+    # Default smart-home vocabulary + any user-supplied terms (appended)
+    session_vocabulary = build_custom_vocabulary(custom_vocabulary)
+    user_vocab_count = len(session_vocabulary) - len(SMARTHOME_CUSTOM_VOCABULARY)
+    logger.info(
+        f"Custom vocabulary: {len(SMARTHOME_CUSTOM_VOCABULARY)} default + {user_vocab_count} user terms"
+        + (f" -> {session_vocabulary[len(SMARTHOME_CUSTOM_VOCABULARY):]}" if user_vocab_count else "")
+    )
         
     # 1. Define the base configuration arguments that apply to both Gemini and Vertex AI
     run_config_kwargs = {
@@ -425,7 +473,7 @@ async def websocket_endpoint(
                 )
             )
         ),            
-        "input_audio_transcription": types.AudioTranscriptionConfig(language_codes=['en-US', 'th-TH'], custom_vocabulary=SMARTHOME_CUSTOM_VOCABULARY),
+        "input_audio_transcription": types.AudioTranscriptionConfig(language_codes=['en-US', 'th-TH'], custom_vocabulary=session_vocabulary),
         "output_audio_transcription": types.AudioTranscriptionConfig(language_codes=['en-US', 'th-TH']),
     }
 
