@@ -119,19 +119,8 @@
                     </div>
                 </div>
 
-                <!-- Live Conversation Stream -->
+                <!-- Command Chat & Parameters -->
                 <div class="card-body" style="padding-top: 0;">
-                    <div class="transcripts-area">
-                        <div class="transcript-bubble user">
-                            <div class="transcript-role">User Input</div>
-                            <div id="transcript-user">Press Connect, then speak or type...</div>
-                        </div>
-                        <div class="transcript-bubble ai">
-                            <div class="transcript-role">Aris Agent</div>
-                            <div id="transcript-ai">Awaiting connection...</div>
-                        </div>
-                    </div>
-
                     <!-- Text Chat / Command Bar -->
                     <div class="chat-input-bar">
                         <input type="text" id="chat-input" class="supabase-input" placeholder="Type a command or query (e.g. 'Turn on living room AC')...">
@@ -170,104 +159,129 @@
         </aside>
 
         <!-- Right Column: Smart Infrastructure & Tool Terminal -->
-        <section class="right-panel">
+        <section class="right-panel" id="right-panel">
 
-            <!-- Telemetry Stats Bar -->
-            <div class="telemetry-bar">
-                <div class="telemetry-item">
-                    <span class="telemetry-label">Total Devices</span>
-                    <span class="telemetry-value" id="telemetry-total">--</span>
-                </div>
-                <div class="telemetry-item">
-                    <span class="telemetry-label">Active Power</span>
-                    <span class="telemetry-value" id="telemetry-active" style="color: var(--brand-emerald);">--</span>
-                </div>
-                <div class="telemetry-item">
-                    <span class="telemetry-label">Climate Running</span>
-                    <span class="telemetry-value" id="telemetry-climate">--</span>
-                </div>
-                <div class="telemetry-item">
-                    <span class="telemetry-label">Surveillance Feeds</span>
-                    <span class="telemetry-value" id="telemetry-cameras">--</span>
+            <!-- Supabase Dynamic Hero Action HUD Overlay -->
+            <div id="hero-overlay" class="hero-overlay">
+                <div id="hero-stack" class="hero-stack">
+                    <!-- Dynamic Hero Cards will appear here -->
                 </div>
             </div>
 
-            <!-- Climate Management -->
-            <div>
-                <div class="section-title">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                    </svg>
-                    <span>Climate & HVAC</span>
+            <!-- TOP CONVERSATION & TRANSCRIPT PANEL (Like v1, Supabase Styled) -->
+            <div class="supabase-transcript-panel" id="transcript-panel">
+                <div class="transcript-topbar">
+                    <div class="transcript-meta">
+                        <span class="transcript-dot"></span>
+                        <span class="transcript-tag">[LIVE_CONVERSATION_STREAM]</span>
+                    </div>
+                    <span class="card-badge" id="transcript-state-badge">IDLE</span>
                 </div>
-                <div class="device-grid" id="climate-grid">
-                    <!-- Dynamic AC Cards -->
-                </div>
+                <div class="transcript-user-line" id="transcript-user">Press connect, then speak...</div>
+                <div class="transcript-ai-line" id="transcript-ai"></div>
             </div>
 
-            <!-- Lighting Management -->
-            <div>
-                <div class="section-title">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-7 7c0 3 2 5 2 7h10c0-2 2-4 2-7a7 7 0 0 0-7-7z"></path>
-                    </svg>
-                    <span>Smart Lighting</span>
-                </div>
-                <div class="device-grid" id="lighting-grid">
-                    <!-- Dynamic Light Cards -->
-                </div>
-            </div>
+            <!-- Content Wrapper (blurs during active hero alert) -->
+            <div id="right-panel-content" class="right-panel-content">
 
-            <!-- Security & Locks -->
-            <div>
-                <div class="section-title">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                    </svg>
-                    <span>Perimeter & Access Control</span>
+                <!-- Telemetry Stats Bar -->
+                <div class="telemetry-bar">
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Total Devices</span>
+                        <span class="telemetry-value" id="telemetry-total">--</span>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Active Power</span>
+                        <span class="telemetry-value" id="telemetry-active" style="color: var(--brand-emerald);">--</span>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Climate Running</span>
+                        <span class="telemetry-value" id="telemetry-climate">--</span>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Surveillance Feeds</span>
+                        <span class="telemetry-value" id="telemetry-cameras">--</span>
+                    </div>
                 </div>
-                <div class="device-grid" id="security-grid">
-                    <!-- Dynamic Lock Cards -->
-                </div>
-            </div>
 
-            <!-- Surveillance Matrix -->
-            <div>
-                <div class="section-title">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M23 7l-7 5 7 5V7z"></path>
-                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-                    </svg>
-                    <span>Smart Vision Cameras</span>
+                <!-- Climate Management -->
+                <div>
+                    <div class="section-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                        <span>Climate & HVAC</span>
+                    </div>
+                    <div class="device-grid" id="climate-grid">
+                        <!-- Dynamic AC Cards -->
+                    </div>
                 </div>
-                <div class="device-grid" id="camera-grid">
-                    <!-- Dynamic Camera Cards -->
-                </div>
-            </div>
 
-            <!-- Live Agent Tool Execution Stream (Supabase Code-Editor Terminal) -->
-            <div class="terminal-card">
-                <div class="terminal-header">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div class="terminal-dots">
-                            <div class="dot red"></div>
-                            <div class="dot yellow"></div>
-                            <div class="dot green"></div>
+                <!-- Lighting Management -->
+                <div>
+                    <div class="section-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-7 7c0 3 2 5 2 7h10c0-2 2-4 2-7a7 7 0 0 0-7-7z"></path>
+                        </svg>
+                        <span>Smart Lighting</span>
+                    </div>
+                    <div class="device-grid" id="lighting-grid">
+                        <!-- Dynamic Light Cards -->
+                    </div>
+                </div>
+
+                <!-- Security & Locks -->
+                <div>
+                    <div class="section-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <span>Perimeter & Access Control</span>
+                    </div>
+                    <div class="device-grid" id="security-grid">
+                        <!-- Dynamic Lock Cards -->
+                    </div>
+                </div>
+
+                <!-- Surveillance Matrix -->
+                <div>
+                    <div class="section-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 7l-7 5 7 5V7z"></path>
+                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                        </svg>
+                        <span>Smart Vision Cameras</span>
+                    </div>
+                    <div class="device-grid" id="camera-grid">
+                        <!-- Dynamic Camera Cards -->
+                    </div>
+                </div>
+
+                <!-- Live Agent Tool Execution Stream (Supabase Code-Editor Terminal) -->
+                <div class="terminal-card">
+                    <div class="terminal-header">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div class="terminal-dots">
+                                <div class="dot red"></div>
+                                <div class="dot yellow"></div>
+                                <div class="dot green"></div>
+                            </div>
+                            <span class="terminal-title">Agent Execution Stream (ADK Tools & Gemini Live Events)</span>
                         </div>
-                        <span class="terminal-title">Agent Execution Stream (ADK Tools & Gemini Live Events)</span>
+                        <button class="terminal-clear" id="terminal-clear">Clear Buffer</button>
                     </div>
-                    <button class="terminal-clear" id="terminal-clear">Clear Buffer</button>
-                </div>
-                <div class="terminal-stream" id="terminal-stream">
-                    <!-- Real-time tool stream rows appear here -->
-                    <div class="stream-row">
-                        <span class="stream-time">00:00:00</span>
-                        <span class="stream-tag call">READY</span>
-                        <span class="stream-msg">Supabase v2 interface initialized. Ready for Gemini Live session.</span>
+                    <div class="terminal-stream" id="terminal-stream">
+                        <!-- Real-time tool stream rows appear here -->
+                        <div class="stream-row">
+                            <span class="stream-time">00:00:00</span>
+                            <span class="stream-tag call">READY</span>
+                            <span class="stream-msg">Supabase v2 interface initialized. Ready for Gemini Live session.</span>
+                        </div>
                     </div>
                 </div>
-            </div>
+
+            </div> <!-- end #right-panel-content -->
 
         </section>
     </main>
@@ -276,8 +290,16 @@
     <div class="modal-backdrop" id="camera-modal">
         <div class="modal-dialog">
             <div class="modal-header">
-                <div class="modal-title">Live Camera Multimodal Inspection</div>
-                <button class="modal-close" id="modal-close">&times;</button>
+                <div class="modal-title" id="modal-title">Live Camera Multimodal Inspection</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button class="icon-btn" id="modal-prev-btn" style="width: 28px; height: 28px; display: none;" title="Previous Camera">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+                    <button class="icon-btn" id="modal-next-btn" style="width: 28px; height: 28px; display: none;" title="Next Camera">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </button>
+                    <button class="modal-close" id="modal-close">&times;</button>
+                </div>
             </div>
             <div class="modal-body">
                 <img id="modal-img" class="modal-img" src="" alt="Camera Inspection Feed">
