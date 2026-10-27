@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Supabase Design System Stylesheet -->
-    <link rel="stylesheet" href="/live-smarthome-agent/static/v2/css/styles.css?v=custom-vocab-1">
+    <link rel="stylesheet" href="/live-smarthome-agent/static/v2/css/styles.css?v=console-tabs-1">
     <!-- Modular ADK & Live API Controller -->
     <script src="/live-smarthome-agent/static/v2/js/app-v2.js" type="module"></script>
 </head>
@@ -69,6 +69,15 @@
 
         <!-- Left Column: Live Agent Voice & Chat Console -->
         <aside class="agent-console">
+
+            <!-- Left Console Tabs -->
+            <div class="version-switcher console-tabs" role="tablist" aria-label="Agent console sections">
+                <button type="button" class="version-btn console-tab active" role="tab" id="console-tab-voice" data-console-tab="voice" aria-selected="true" aria-controls="console-panel-voice">Voice Console</button>
+                <button type="button" class="version-btn console-tab" role="tab" id="console-tab-insights" data-console-tab="insights" aria-selected="false" aria-controls="console-panel-insights">Telemetry &amp; Vocabulary</button>
+            </div>
+
+            <!-- Tab Panel: Voice Console -->
+            <div class="console-tab-panel" id="console-panel-voice" role="tabpanel" aria-labelledby="console-tab-voice">
 
             <!-- Voice Hero Card -->
             <div class="supabase-card">
@@ -155,6 +164,11 @@
                     </div>
                 </div>
             </div>
+
+            </div> <!-- end #console-panel-voice -->
+
+            <!-- Tab Panel: Telemetry & Vocabulary -->
+            <div class="console-tab-panel" id="console-panel-insights" role="tabpanel" aria-labelledby="console-tab-insights" hidden>
 
             <!-- Token Usage Telemetry Card (Session & Per-Call) -->
             <div class="supabase-card" id="token-usage-card">
@@ -253,6 +267,8 @@
                     </div>
                 </div>
             </div>
+
+            </div> <!-- end #console-panel-insights -->
 
         </aside>
 

@@ -1356,6 +1356,24 @@ code, pre, .mono {
 }
 
 /* ==========================================================================
+   Left Console Tabs (reuses .version-switcher / .version-btn visuals)
+   ========================================================================== */
+.console-tabs {
+    align-self: stretch;
+}
+.console-tabs .console-tab {
+    flex: 1;
+}
+.console-tab-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+.console-tab-panel[hidden] {
+    display: none;
+}
+
+/* ==========================================================================
    Custom Vocabulary Panel
    ========================================================================== */
 .vocab-body {

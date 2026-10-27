@@ -1257,7 +1257,35 @@ function initPanelToggles() {
     });
 }
 
+const CONSOLE_TAB_STORAGE_KEY = "v2-console-active-tab";
+
+function activateConsoleTab(tabName) {
+    const tabs = document.querySelectorAll(".console-tab[data-console-tab]");
+    if (!tabs.length) return;
+    const valid = Array.from(tabs).some((t) => t.dataset.consoleTab === tabName);
+    const target = valid ? tabName : tabs[0].dataset.consoleTab;
+
+    tabs.forEach((tab) => {
+        const isActive = tab.dataset.consoleTab === target;
+        tab.classList.toggle("active", isActive);
+        tab.setAttribute("aria-selected", String(isActive));
+        const panel = document.getElementById(tab.getAttribute("aria-controls"));
+        if (panel) panel.hidden = !isActive;
+    });
+    try { localStorage.setItem(CONSOLE_TAB_STORAGE_KEY, target); } catch { /* ignore */ }
+}
+
+function initConsoleTabs() {
+    document.querySelectorAll(".console-tab[data-console-tab]").forEach((tab) => {
+        tab.addEventListener("click", () => activateConsoleTab(tab.dataset.consoleTab));
+    });
+    let saved = "voice";
+    try { saved = localStorage.getItem(CONSOLE_TAB_STORAGE_KEY) || "voice"; } catch { /* storage unavailable */ }
+    activateConsoleTab(saved);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+    initConsoleTabs();
     initPanelToggles();
     initCustomVocabulary();
     if (connectBtn) connectBtn.addEventListener("click", connect);
