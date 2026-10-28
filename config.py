@@ -50,8 +50,18 @@ class AgentConfig:
             "SUBAGENT_LITE_CLOUD_LOCATION", 
             "global"
         )
+
+        # Agent architecture default for WebSocket sessions that don't pass ?arch=
+        #   "monolithic" -> Live agent owns all rules + 6 tools (original behaviour, v1 default)
+        #   "brain"      -> thin Live voice layer + cacheable Flash Lite brain (brain.py)
+        self.AGENT_ARCH_DEFAULT = os.getenv("SMARTHOME_AGENT_ARCH", "monolithic").strip().lower()
+
+        # Brain sub-agent (generateContent + function calling, implicit caching)
+        self.BRAIN_MODEL = os.getenv("BRAIN_MODEL", self.SUBAGENT_MODEL)
+        self.BRAIN_CLOUD_LOCATION = os.getenv("BRAIN_CLOUD_LOCATION", self.SUBAGENT_CLOUD_LOCATION)
+        self.BRAIN_MAX_STEPS = int(os.getenv("BRAIN_MAX_STEPS", "6"))
         
-        logger.info(f"INITAILIZATION COMPLETE with ORCHESTRATOR_MODEL {self.ORCHESTRATOR_MODEL}; IS_VERTEX_AI_LIVE_API {self.IS_VERTEX_AI_LIVE_API}; SUBAGENT_MODEL {self.SUBAGENT_MODEL}; SUBAGENT_CLOUD_LOCATION {self.SUBAGENT_CLOUD_LOCATION};")
+        logger.info(f"INITAILIZATION COMPLETE with ORCHESTRATOR_MODEL {self.ORCHESTRATOR_MODEL}; IS_VERTEX_AI_LIVE_API {self.IS_VERTEX_AI_LIVE_API}; SUBAGENT_MODEL {self.SUBAGENT_MODEL}; SUBAGENT_CLOUD_LOCATION {self.SUBAGENT_CLOUD_LOCATION}; AGENT_ARCH_DEFAULT {self.AGENT_ARCH_DEFAULT}; BRAIN_MODEL {self.BRAIN_MODEL}; BRAIN_CLOUD_LOCATION {self.BRAIN_CLOUD_LOCATION};")
 
 # App Configuration
 APP_NAME = "aris_smarthome_agent"

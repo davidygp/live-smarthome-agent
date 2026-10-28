@@ -56,6 +56,7 @@ TRACE_FILE = "gemini_usage_trace.log"
 CSV_HEADER = "timestamp,user_id,session_id,total_token_count,prompt_token_count,prompt_tokens_details,candidates_token_count,candidates_tokens_details,cached_content_token_count,cache_tokens_details,thoughts_token_count,tool_use_prompt_token_count\n"
 # Sub-agent rows (prefix "subagent_usage") use this column layout:
 # timestamp,user_id,session_id,source,model,camera_id,total_token_count,prompt_token_count,image_in_token_count,text_in_token_count,candidates_token_count,thoughts_token_count,cached_content_token_count
+# (source = "check_camera" or "brain"; camera_id is empty for brain rows)
 
 # OVERWRITE MODE: Unconditionally open with "w" to wipe old data and write a fresh header
 with open(TRACE_FILE, "w", encoding="utf-8") as f:
@@ -95,9 +96,10 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 import config
 from config import AgentConfig
-from agents import get_aris_agent, toolInstance
+from agents import get_aris_agent, get_aris_voice_agent, resolve_agent_arch, toolInstance
 from voiceconfig import VoiceConfig
 from usage_sink import bind_session_queue
+from brain import bind_brain_session
 
 app_name = config.APP_NAME
 agent_config = config.agent_config
@@ -417,7 +419,8 @@ async def websocket_endpoint(
     voice: Optional[str] = "aoede",              # Defaults to 'aoede'
     affective_dialog: Optional[bool] = False,    # Auto-converts "true" to True
     proactive_audio: Optional[bool] = False,     # Auto-converts "false" to False    
-    custom_vocabulary: Optional[str] = None      # JSON array of extra ASR terms from the UI
+    custom_vocabulary: Optional[str] = None,     # JSON array of extra ASR terms from the UI
+    arch: Optional[str] = None                   # "monolithic" | "brain"; falls back to SMARTHOME_AGENT_ARCH
 ) -> None:    
     
     logger.info(
@@ -427,9 +430,14 @@ async def websocket_endpoint(
     logger.info("WebSocket connection accepted")
     logger.info(f"Settings - Voice: {voice} / Gender: {VoiceConfig.get_gender(voice).name}, Affective: {affective_dialog}, Proactive: {proactive_audio}")
 
+    # Resolve agent architecture (v1 never sends ?arch= -> stays on the .env default, "monolithic")
+    session_arch = resolve_agent_arch(arch)
+    logger.info(f"Agent architecture: {session_arch}")
+    agent_factory = get_aris_voice_agent if session_arch == "brain" else get_aris_agent
+
     # Fetch Agent Dynamically (Run in Threadpool so we don't block the event loop)
     try:
-        agent = await run_in_threadpool(get_aris_agent, VoiceConfig.is_female(voice))
+        agent = await run_in_threadpool(agent_factory, VoiceConfig.is_female(voice))
         logger.info(f"Successfully loaded agent profile for ARIS")
     except Exception as e:
         logger.error(f"Failed to load agent ARIS: {e}")
@@ -689,9 +697,21 @@ async def websocket_endpoint(
     # Run the Concurrent Tasks
     # ========================================
     async def subagent_usage_task() -> None:
-        """Forwards sub-agent (e.g. camera check) token usage to the UI and trace log."""
+        """Forwards side-channel items: sub-agent token usage (camera, brain) and mirrored UI events."""
         while True:
-            record = await subagent_usage_queue.get()
+            item = await subagent_usage_queue.get()
+
+            # Mirrored ADK-shaped tool events from the brain: WebSocket only, never the Live session
+            if item.get("kind") == "ui_event":
+                event = item["event"]
+                logger.info(f"### MIRRORED EVENT TO FRONTEND - {json.dumps(event, default=str)[:500]}")
+                try:
+                    await websocket.send_text(json.dumps(event, default=str))
+                except Exception as e:
+                    logger.warning(f"Could not forward mirrored event to frontend: {e}")
+                continue
+
+            record = item.get("record", item)
             timestamp_str = time.strftime("%Y-%m-%d %H:%M:%S")
             csv_fields = [
                 timestamp_str, str(user_id), str(session_id),
@@ -714,7 +734,14 @@ async def websocket_endpoint(
     # Bind the per-session sub-agent usage queue BEFORE spawning tasks so that
     # tool executions inside run_live() inherit it via contextvars.
     subagent_usage_queue = bind_session_queue()
+    bind_brain_session()
     usage_forwarder = asyncio.create_task(subagent_usage_task())
+
+    # Tell the UI which architecture this session runs (v1 ignores unknown JSON)
+    try:
+        await websocket.send_text(json.dumps({"type": "session_info", "arch": session_arch}))
+    except Exception as e:
+        logger.warning(f"Could not send session_info to frontend: {e}")
 
     try:
         logger.info("Starting asyncio.gather for tasks")

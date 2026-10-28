@@ -182,7 +182,10 @@
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
                         </button>
                     </div>
-                    <span class="card-badge" id="v2-token-turns-badge">0 calls · 0 turns</span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="card-badge" id="v2-arch-badge" title="Agent architecture for the current session">Arch: --</span>
+                        <span class="card-badge" id="v2-token-turns-badge">0 calls · 0 turns</span>
+                    </div>
                 </div>
                 <div class="card-body token-stats-grid collapsible-body" id="token-usage-body">
                     <!-- Overall Session Stats -->
@@ -233,6 +236,21 @@
                         </div>
                         <div class="token-modality-row" id="v2-camera-modalities">
                             Image In: 0 · Text In: 0 · Cache: 0
+                        </div>
+                    </div>
+
+                    <!-- Brain Sub-Agent Stats (Flash Lite generateContent, implicit caching) -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">BRAIN (SUB-AGENT)</span>
+                            <span class="card-badge" id="v2-brain-steps-badge" title="Brain generateContent steps (arch=brain only)">0 steps</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-brain-total">0</div>
+                        <div class="token-stat-sub" id="v2-brain-breakdown">
+                            In: 0 · Out: 0 · Think: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-brain-cache" title="Implicit cache hits on the static brain prefix (system instruction + tools + examples)">
+                            Cached: 0 (0% of input) · Hits: 0/0
                         </div>
                     </div>
                 </div>

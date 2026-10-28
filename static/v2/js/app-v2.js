@@ -103,6 +103,29 @@ const cameraChecksBadgeEl = document.getElementById("v2-camera-checks-badge");
 const cameraTotalEl = document.getElementById("v2-camera-total");
 const cameraBreakdownEl = document.getElementById("v2-camera-breakdown");
 const cameraModalitiesEl = document.getElementById("v2-camera-modalities");
+const brainStepsBadgeEl = document.getElementById("v2-brain-steps-badge");
+const brainTotalEl = document.getElementById("v2-brain-total");
+const brainBreakdownEl = document.getElementById("v2-brain-breakdown");
+const brainCacheEl = document.getElementById("v2-brain-cache");
+const archBadgeEl = document.getElementById("v2-arch-badge");
+
+// =========================================================================
+// Agent Architecture (thin Live voice layer + cached brain vs. single Live agent)
+// =========================================================================
+const SUPPORTED_ARCHS = ["brain", "monolithic"];
+
+function resolveRequestedArch() {
+    const fromUrl = (new URLSearchParams(window.location.search).get("arch") || "").toLowerCase();
+    return SUPPORTED_ARCHS.includes(fromUrl) ? fromUrl : "brain";
+}
+
+function renderArchBadge(arch) {
+    if (!archBadgeEl) return;
+    archBadgeEl.innerText = arch ? `Arch: ${arch}` : "Arch: --";
+    archBadgeEl.title = arch === "brain"
+        ? "Thin Gemini Live voice layer + cacheable Flash Lite brain (implicit caching)"
+        : "Single Gemini Live agent with all rules and tools";
+}
 
 // =========================================================================
 // Token Usage State & Helpers (Session, Per-Call & Camera Sub-Agent)
@@ -119,7 +142,7 @@ function emptyUsageBucket() {
     return {
         total: 0, prompt: 0, output: 0, thoughts: 0, cached: 0, toolUse: 0,
         audioIn: 0, audioInNew: 0, imageIn: 0, textIn: 0, audioOut: 0,
-        cameraTotal: 0,
+        cameraTotal: 0, brainTotal: 0,
     };
 }
 
@@ -140,6 +163,11 @@ const cameraUsage = {
     total: 0, prompt: 0, output: 0, thoughts: 0, cached: 0,
     imageIn: 0, textIn: 0, checks: 0
 };
+
+function emptyBrainUsage() {
+    return { total: 0, prompt: 0, output: 0, thoughts: 0, cached: 0, textIn: 0, steps: 0, cacheHits: 0 };
+}
+const brainUsage = emptyBrainUsage();
 
 let callHasAiActivity = false;
 let userUtteranceActive = false;
@@ -170,7 +198,8 @@ function inputModalitiesLabel(u) {
 
 function outputModalitiesLabel(u) {
     const toolUse = u.toolUse > 0 ? ` · Tool Use: ${formatNum(u.toolUse)}` : "";
-    return `Audio Out: ${formatNum(u.audioOut)} · Cache: ${formatNum(u.cached)} · Camera: ${formatNum(u.cameraTotal)}${toolUse}`;
+    const brain = u.brainTotal > 0 ? ` · Brain: ${formatNum(u.brainTotal)}` : "";
+    return `Audio Out: ${formatNum(u.audioOut)} · Cache: ${formatNum(u.cached)} · Camera: ${formatNum(u.cameraTotal)}${brain}${toolUse}`;
 }
 
 function renderTokenUsageUI(pulseCallBox = false) {
@@ -226,6 +255,20 @@ function renderTokenUsageUI(pulseCallBox = false) {
         cameraModalitiesEl.innerText = `Image In: ${formatNum(cameraUsage.imageIn)} · Text In: ${formatNum(cameraUsage.textIn)} · Cache: ${formatNum(cameraUsage.cached)}`;
     }
 
+    if (brainStepsBadgeEl) {
+        brainStepsBadgeEl.innerText = `${brainUsage.steps} ${brainUsage.steps === 1 ? "step" : "steps"}`;
+    }
+    if (brainTotalEl) {
+        brainTotalEl.innerText = formatNum(brainUsage.total);
+    }
+    if (brainBreakdownEl) {
+        brainBreakdownEl.innerText = `In: ${formatNum(brainUsage.prompt)} · Out: ${formatNum(brainUsage.output)} · Think: ${formatNum(brainUsage.thoughts)}`;
+    }
+    if (brainCacheEl) {
+        const pct = brainUsage.prompt > 0 ? Math.round((brainUsage.cached / brainUsage.prompt) * 100) : 0;
+        brainCacheEl.innerText = `Cached: ${formatNum(brainUsage.cached)} (${pct}% of input) · Hits: ${brainUsage.cacheHits}/${brainUsage.steps}`;
+    }
+
     if (pulseCallBox && callTotalEl) {
         const box = callTotalEl.closest(".token-stat-box");
         if (box) {
@@ -246,6 +289,7 @@ function resetSessionUsage() {
         total: 0, prompt: 0, output: 0, thoughts: 0, cached: 0,
         imageIn: 0, textIn: 0, checks: 0
     });
+    Object.assign(brainUsage, emptyBrainUsage());
     callHasAiActivity = false;
     userUtteranceActive = false;
     turnInProgress = false;
@@ -317,7 +361,7 @@ function handleTokenUsageEvent(payload) {
     );
 }
 
-// Camera check sub-agent usage (one event per camera analysed)
+// Sub-agent usage: camera checks (one event per camera) and brain steps (one event per generateContent)
 function handleSubagentTokenUsageEvent(payload) {
     const d = {
         total: payload.totalTokenCount || 0,
@@ -328,6 +372,11 @@ function handleSubagentTokenUsageEvent(payload) {
         imageIn: payload.imageInTokenCount || 0,
         textIn: payload.textInTokenCount || 0,
     };
+
+    if (payload.source === "brain") {
+        handleBrainTokenUsage(payload, d);
+        return;
+    }
 
     addToBucket(cameraUsage, d);
     cameraUsage.checks += 1;
@@ -355,6 +404,36 @@ function handleSubagentTokenUsageEvent(payload) {
 // =========================================================================
 // UI State Updates
 // =========================================================================
+
+// Brain sub-agent usage (Flash Lite generateContent; implicit caching shows up in `cached`)
+function handleBrainTokenUsage(payload, d) {
+    brainUsage.total += d.total;
+    brainUsage.prompt += d.prompt;
+    brainUsage.output += d.output;
+    brainUsage.thoughts += d.thoughts;
+    brainUsage.cached += d.cached;
+    brainUsage.textIn += d.textIn;
+    brainUsage.steps += 1;
+    if (d.cached > 0) brainUsage.cacheHits += 1;
+
+    const rollup = {
+        total: d.total, prompt: d.prompt, output: d.output, thoughts: d.thoughts,
+        cached: d.cached, imageIn: d.imageIn, textIn: d.textIn, brainTotal: d.total,
+    };
+    addToBucket(sessionUsage, rollup);
+    if (sessionUsage.calls > 0) {
+        addToBucket(callUsage, rollup);
+        callHasAiActivity = true;
+    }
+
+    renderTokenUsageUI(sessionUsage.calls > 0);
+
+    logTerminal(
+        "TOKENS",
+        `Brain step ${payload.step || "?"} (${payload.model || "brain"}): +${formatNum(d.total)} tokens (In: ${formatNum(d.prompt)} [Cached ${formatNum(d.cached)}], Out: ${formatNum(d.output)}, Think: ${formatNum(d.thoughts)}) | Session Total: ${formatNum(sessionUsage.total)}`,
+        false
+    );
+}
 
 function setAgentState(state) {
     if (!orbWrapper || !stateLabel) return;
@@ -697,6 +776,10 @@ async function connect() {
     vocabState.appliedKey = JSON.stringify(userVocab);
     logTerminal("SYS", `Custom vocabulary: ${vocabState.defaults.length} built-in + ${userVocab.length} custom term(s)${userVocab.length ? ` [${userVocab.join(", ")}]` : ""}`);
 
+    // Agent architecture: v2 opts into the thin-Live + cached-brain design by default.
+    // Override for A/B comparison with the page URL, e.g. /live-smarthome-agent/v2?arch=monolithic
+    params.set("arch", resolveRequestedArch());
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/live-smarthome-agent/ws/${userId}/${sessionId}?${params.toString()}`;
 
@@ -739,9 +822,16 @@ async function connect() {
             return;
         }
 
-        // Camera check sub-agent usage (side channel from main.py)
+        // Camera check / brain sub-agent usage (side channel from main.py)
         if (adkEvent.type === "subagent_token_usage") {
             handleSubagentTokenUsageEvent(adkEvent);
+            return;
+        }
+
+        // Architecture the server resolved for this session
+        if (adkEvent.type === "session_info") {
+            renderArchBadge(adkEvent.arch);
+            logTerminal("SYS", `Agent architecture: ${adkEvent.arch}${adkEvent.arch === "brain" ? " (thin Live voice layer + cached Flash Lite brain)" : " (single Live agent)"}`, true);
             return;
         }
 
@@ -773,15 +863,16 @@ async function connect() {
             }
         }
 
-        // Tool calls & responses
+        // Tool calls & responses (mirrored brain events use the same ADK shape)
         if (adkEvent.content && adkEvent.content.parts) {
+            const tagPrefix = adkEvent.mirrored ? "BRAIN " : "";
             adkEvent.content.parts.forEach((part, index) => {
                 if (part.functionCall) {
                     callHasAiActivity = true;
                     turnInProgress = true;
                     const name = part.functionCall.name;
                     const args = part.functionCall.args || {};
-                    logTerminal("CALL", `${name}(${JSON.stringify(args)})`, false);
+                    logTerminal(`${tagPrefix}CALL`, `${name}(${JSON.stringify(args)})`, false);
                 }
 
                 if (part.functionResponse) {
@@ -789,7 +880,7 @@ async function connect() {
                     turnInProgress = true;
                     const name = part.functionResponse.name;
                     const resp = part.functionResponse.response;
-                    logTerminal("RESULT", `${name} -> ${JSON.stringify(resp)}`, true);
+                    logTerminal(`${tagPrefix}RESULT`, `${name} -> ${JSON.stringify(resp)}`, true);
 
                     // Camera check modal
                     if (name === "check_camera") {

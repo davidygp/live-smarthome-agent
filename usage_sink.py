@@ -1,9 +1,18 @@
-"""Per-session side channel for sub-agent (non-Live) token usage.
+"""Per-session side channel for sub-agent (non-Live) token usage and UI events.
 
 Tools like `check_camera` make their own `generate_content` calls whose usage
 never appears in the Live API `usage_metadata`. Rather than leaking usage data
 into the tool response (which the Live model would read and pay for), tools
 report it here and `main.py` forwards it to the UI and the trace log.
+
+The same channel carries "mirrored" tool events from the brain sub-agent
+(`brain.py`): ADK-shaped functionCall/functionResponse events that are sent to
+the WebSocket ONLY (never to the Live session), so both v1 and v2 UIs keep
+driving hero cards / camera modals / tool logs from the real tool names.
+
+Queue items are tagged dicts:
+    {"kind": "usage",    "record": {...}}   -> trace log + subagent_token_usage
+    {"kind": "ui_event", "event":  {...}}   -> forwarded verbatim to the WebSocket
 
 The sink is bound per WebSocket session via a ContextVar. asyncio tasks copy
 the current context on creation, so ADK tool executions spawned inside
@@ -69,4 +78,13 @@ def report_subagent_usage(record: dict) -> None:
     if queue is None:
         logger.info(f"Sub-agent usage (no session bound): {record}")
         return
-    queue.put_nowait(record)
+    queue.put_nowait({"kind": "usage", "record": record})
+
+
+def report_ui_event(event: dict) -> None:
+    """Queues a WebSocket-only UI event for the current session (no-op outside a session)."""
+    queue = _subagent_usage_queue.get()
+    if queue is None:
+        logger.debug(f"UI event dropped (no session bound): {event}")
+        return
+    queue.put_nowait({"kind": "ui_event", "event": event})
