@@ -53,6 +53,9 @@ def _modality_counts(details) -> dict[str, int]:
     return counts
 
 
+modality_counts = _modality_counts  # public alias (used by main.py for cost estimation)
+
+
 def build_usage_record(source: str, model: str, usage_metadata, **extra: Any) -> dict:
     """Normalizes a GenerateContentResponseUsageMetadata into a flat dict."""
     um = usage_metadata

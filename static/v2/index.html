@@ -256,6 +256,67 @@
                 </div>
             </div>
 
+            <!-- Estimated Cost Card (USD computed server-side in pricing.py from the token telemetry above) -->
+            <div class="supabase-card" id="cost-estimate-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="1" x2="12" y2="23"></line>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                        <span>Estimated Cost</span>
+                        <button type="button" class="panel-toggle" data-collapse-panel="cost-estimate-card" aria-expanded="true" aria-controls="cost-estimate-body" title="Collapse panel">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                    </div>
+                    <span class="card-badge" id="v2-cost-rates-badge" title="Rates load from .env when a session starts">USD · Standard</span>
+                </div>
+                <div class="card-body token-stats-grid collapsible-body" id="cost-estimate-body">
+                    <!-- Session Total Cost -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">SESSION TOTAL</span>
+                            <span class="card-badge" id="v2-cost-session-badge" title="Cache savings vs. uncached input rates">Saved: $0.000000</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-cost-session-total">$0.000000</div>
+                        <div class="token-stat-sub" id="v2-cost-session-breakdown">Live: $0.000000 · Camera: $0.000000 · Brain: $0.000000</div>
+                        <div class="token-modality-row" id="v2-cost-session-io">In: $0.000000 · Cached In: $0.000000 · Out: $0.000000</div>
+                    </div>
+
+                    <!-- Per-Call Cost -->
+                    <div class="token-stat-box active-call-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">PER CALL (SPEAKER ↔ VOICE)</span>
+                            <span class="card-badge" id="v2-cost-call-badge" title="Average cost per completed call in this session">Call #0 · Avg: $0.000000</span>
+                        </div>
+                        <div class="token-stat-main" style="color: var(--brand-emerald);" id="v2-cost-call-total">$0.000000</div>
+                        <div class="token-stat-sub" id="v2-cost-call-breakdown">Live: $0.000000 · Camera: $0.000000 · Brain: $0.000000</div>
+                        <div class="token-modality-row" id="v2-cost-call-io">In: $0.000000 · Cached In: $0.000000 · Out: $0.000000</div>
+                    </div>
+
+                    <!-- Camera Checks Cost -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">CAMERA CHECKS (SUB-AGENT)</span>
+                            <span class="card-badge" id="v2-cost-camera-badge">0 checks · Avg: $0.000000</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-cost-camera-total">$0.000000</div>
+                        <div class="token-modality-row" id="v2-cost-camera-io">In: $0.000000 · Cached In: $0.000000 · Out: $0.000000</div>
+                    </div>
+
+                    <!-- Brain Cost -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">BRAIN (SUB-AGENT)</span>
+                            <span class="card-badge" id="v2-cost-brain-badge">0 steps · Avg: $0.000000</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-cost-brain-total">$0.000000</div>
+                        <div class="token-stat-sub" id="v2-cost-brain-savings" title="Implicit cache savings vs. uncached input rate">Cache saved: $0.000000</div>
+                        <div class="token-modality-row" id="v2-cost-brain-io">In: $0.000000 · Cached In: $0.000000 · Out: $0.000000</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Custom Vocabulary Card (ASR biasing via input_audio_transcription.custom_vocabulary) -->
             <div class="supabase-card" id="custom-vocab-card">
                 <div class="card-header">

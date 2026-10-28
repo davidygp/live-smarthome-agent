@@ -98,8 +98,9 @@ import config
 from config import AgentConfig
 from agents import get_aris_agent, get_aris_voice_agent, resolve_agent_arch, toolInstance
 from voiceconfig import VoiceConfig
-from usage_sink import bind_session_queue
+from usage_sink import bind_session_queue, modality_counts
 from brain import bind_brain_session
+import pricing
 
 app_name = config.APP_NAME
 agent_config = config.agent_config
@@ -656,7 +657,19 @@ async def websocket_endpoint(
                                 
                 logger.info(csv_row_display)
 
-                # 5. Send dedicated normalized token usage event to frontend UI
+                # 5. Deterministic USD cost estimate for this Live turn (pricing.py, rates from .env;
+                #    no cache pricing for the Live model, so cached tokens bill at full input rate)
+                turn_cost = pricing.cost_live_turn(
+                    prompt_mod=modality_counts(getattr(usage, "prompt_tokens_details", None)),
+                    cand_mod=modality_counts(getattr(usage, "candidates_tokens_details", None)),
+                    candidates_total=cand_tokens,
+                    thoughts=thoughts_tokens,
+                    tool_use=tool_use_tokens,
+                )
+                cost_ledger.add("live", turn_cost)
+                logger.info(f"COST live turn ${turn_cost['totalUsd']:.6f} | session ${cost_ledger.session['totalUsd']:.6f}")
+
+                # 6. Send dedicated normalized token usage event to frontend UI
                 usage_payload = {
                     "type": "token_usage",
                     "timestamp": timestamp_str,
@@ -669,6 +682,7 @@ async def websocket_endpoint(
                     "promptTokensDetails": p_details,
                     "candidatesTokensDetails": cand_details,
                     "cacheTokensDetails": c_details,
+                    "cost": {"event": turn_cost, "bucket": "live", "ledger": cost_ledger.snapshot()},
                 }
                 await websocket.send_text(json.dumps(usage_payload))
             # =========================================================================                                 
@@ -724,10 +738,15 @@ async def websocket_endpoint(
             ]
             usage_logger.info(f"subagent_usage {','.join(csv_fields)}")
             logger.info(f"SUBAGENT USAGE {record}")
+            bucket = pricing.bucket_for_source(str(record.get("source", "")))
+            sub_cost = pricing.cost_subagent_record(record)
+            cost_ledger.add(bucket, sub_cost)
+            logger.info(f"COST {bucket} ${sub_cost['totalUsd']:.6f} | session ${cost_ledger.session['totalUsd']:.6f}")
             try:
-                await websocket.send_text(json.dumps(
-                    {"type": "subagent_token_usage", "timestamp": timestamp_str, **record}
-                ))
+                await websocket.send_text(json.dumps({
+                    "type": "subagent_token_usage", "timestamp": timestamp_str, **record,
+                    "cost": {"event": sub_cost, "bucket": bucket, "ledger": cost_ledger.snapshot()},
+                }))
             except Exception as e:
                 logger.warning(f"Could not forward sub-agent usage to frontend: {e}")
 
@@ -735,11 +754,15 @@ async def websocket_endpoint(
     # tool executions inside run_live() inherit it via contextvars.
     subagent_usage_queue = bind_session_queue()
     bind_brain_session()
+    # Per-session USD cost ledger (Live + camera + brain), computed in Python only
+    cost_ledger = pricing.SessionCostLedger()
     usage_forwarder = asyncio.create_task(subagent_usage_task())
 
     # Tell the UI which architecture this session runs (v1 ignores unknown JSON)
     try:
-        await websocket.send_text(json.dumps({"type": "session_info", "arch": session_arch}))
+        await websocket.send_text(json.dumps({
+            "type": "session_info", "arch": session_arch, "pricing": pricing.pricing_summary(),
+        }))
     except Exception as e:
         logger.warning(f"Could not send session_info to frontend: {e}")
 

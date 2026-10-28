@@ -109,6 +109,24 @@ const brainBreakdownEl = document.getElementById("v2-brain-breakdown");
 const brainCacheEl = document.getElementById("v2-brain-cache");
 const archBadgeEl = document.getElementById("v2-arch-badge");
 
+// Estimated Cost DOM Elements (USD values are computed server-side in pricing.py)
+const costRatesBadgeEl = document.getElementById("v2-cost-rates-badge");
+const costSessionBadgeEl = document.getElementById("v2-cost-session-badge");
+const costSessionTotalEl = document.getElementById("v2-cost-session-total");
+const costSessionBreakdownEl = document.getElementById("v2-cost-session-breakdown");
+const costSessionIoEl = document.getElementById("v2-cost-session-io");
+const costCallBadgeEl = document.getElementById("v2-cost-call-badge");
+const costCallTotalEl = document.getElementById("v2-cost-call-total");
+const costCallBreakdownEl = document.getElementById("v2-cost-call-breakdown");
+const costCallIoEl = document.getElementById("v2-cost-call-io");
+const costCameraBadgeEl = document.getElementById("v2-cost-camera-badge");
+const costCameraTotalEl = document.getElementById("v2-cost-camera-total");
+const costCameraIoEl = document.getElementById("v2-cost-camera-io");
+const costBrainBadgeEl = document.getElementById("v2-cost-brain-badge");
+const costBrainTotalEl = document.getElementById("v2-cost-brain-total");
+const costBrainSavingsEl = document.getElementById("v2-cost-brain-savings");
+const costBrainIoEl = document.getElementById("v2-cost-brain-io");
+
 // =========================================================================
 // Agent Architecture (thin Live voice layer + cached brain vs. single Live agent)
 // =========================================================================
@@ -168,6 +186,97 @@ function emptyBrainUsage() {
     return { total: 0, prompt: 0, output: 0, thoughts: 0, cached: 0, textIn: 0, steps: 0, cacheHits: 0 };
 }
 const brainUsage = emptyBrainUsage();
+
+// =========================================================================
+// Estimated Cost State
+//
+// Every token_usage / subagent_token_usage event carries `cost` computed in
+// pricing.py: { event: {inputUsd, cachedInputUsd, outputUsd, totalUsd,
+// cacheSavingsUsd}, bucket: "live"|"camera"|"brain", ledger: {session, live,
+// camera, brain} }. Session / camera / brain figures are the server ledger
+// verbatim; the browser only sums event costs inside the current call (call
+// boundaries are detected client-side from transcription activity).
+// =========================================================================
+function emptyCost() {
+    return { inputUsd: 0, cachedInputUsd: 0, outputUsd: 0, totalUsd: 0, cacheSavingsUsd: 0 };
+}
+function emptyCostLedger() {
+    return { session: emptyCost(), live: emptyCost(), camera: emptyCost(), brain: emptyCost() };
+}
+function emptyCallCost() {
+    return Object.assign(emptyCost(), { live: 0, camera: 0, brain: 0 });
+}
+let costLedger = emptyCostLedger();
+const callCost = emptyCallCost();
+let callsCostSum = 0;
+
+function applyCostEvent(cost) {
+    if (!cost || !cost.ledger) return;
+    costLedger = cost.ledger;
+    if (sessionUsage.calls > 0 && cost.event) {
+        for (const key of Object.keys(emptyCost())) {
+            callCost[key] += cost.event[key] || 0;
+        }
+        callCost[cost.bucket] = (callCost[cost.bucket] || 0) + (cost.event.totalUsd || 0);
+        callsCostSum += cost.event.totalUsd || 0;
+    }
+}
+
+function formatUsd(n) {
+    const v = n || 0;
+    return `$${v.toFixed(v >= 1 ? 4 : 6)}`;
+}
+
+function costIoLabel(c) {
+    return `In: ${formatUsd(c.inputUsd)} · Cached In: ${formatUsd(c.cachedInputUsd)} · Out: ${formatUsd(c.outputUsd)}`;
+}
+
+function renderCostUI() {
+    const s = costLedger.session;
+    if (costSessionTotalEl) costSessionTotalEl.innerText = formatUsd(s.totalUsd);
+    if (costSessionBadgeEl) costSessionBadgeEl.innerText = `Saved: ${formatUsd(s.cacheSavingsUsd)}`;
+    if (costSessionBreakdownEl) {
+        costSessionBreakdownEl.innerText = `Live: ${formatUsd(costLedger.live.totalUsd)} · Camera: ${formatUsd(costLedger.camera.totalUsd)} · Brain: ${formatUsd(costLedger.brain.totalUsd)}`;
+    }
+    if (costSessionIoEl) costSessionIoEl.innerText = costIoLabel(s);
+
+    if (costCallTotalEl) costCallTotalEl.innerText = formatUsd(callCost.totalUsd);
+    if (costCallBadgeEl) {
+        const avg = sessionUsage.calls > 0 ? callsCostSum / sessionUsage.calls : 0;
+        costCallBadgeEl.innerText = `Call #${sessionUsage.calls} · Avg: ${formatUsd(avg)}`;
+    }
+    if (costCallBreakdownEl) {
+        costCallBreakdownEl.innerText = `Live: ${formatUsd(callCost.live)} · Camera: ${formatUsd(callCost.camera)} · Brain: ${formatUsd(callCost.brain)}`;
+    }
+    if (costCallIoEl) costCallIoEl.innerText = costIoLabel(callCost);
+
+    const cam = costLedger.camera;
+    if (costCameraTotalEl) costCameraTotalEl.innerText = formatUsd(cam.totalUsd);
+    if (costCameraBadgeEl) {
+        const avg = cameraUsage.checks > 0 ? cam.totalUsd / cameraUsage.checks : 0;
+        costCameraBadgeEl.innerText = `${cameraUsage.checks} ${cameraUsage.checks === 1 ? "check" : "checks"} · Avg: ${formatUsd(avg)}`;
+    }
+    if (costCameraIoEl) costCameraIoEl.innerText = costIoLabel(cam);
+
+    const br = costLedger.brain;
+    if (costBrainTotalEl) costBrainTotalEl.innerText = formatUsd(br.totalUsd);
+    if (costBrainBadgeEl) {
+        const avg = brainUsage.steps > 0 ? br.totalUsd / brainUsage.steps : 0;
+        costBrainBadgeEl.innerText = `${brainUsage.steps} ${brainUsage.steps === 1 ? "step" : "steps"} · Avg: ${formatUsd(avg)}`;
+    }
+    if (costBrainSavingsEl) costBrainSavingsEl.innerText = `Cache saved: ${formatUsd(br.cacheSavingsUsd)}`;
+    if (costBrainIoEl) costBrainIoEl.innerText = costIoLabel(br);
+}
+
+function renderPricingRates(p) {
+    if (!costRatesBadgeEl || !p || !p.live || !p.lite) return;
+    const L = p.live, S = p.lite;
+    costRatesBadgeEl.title =
+        `${p.currency} ${p.unit}, ${p.tier}\n` +
+        `Live (no caching) — text in ${L.text_in}, audio in ${L.audio_in}, image in ${L.image_in}, ` +
+        `text out ${L.text_out}, audio out ${L.audio_out}\n` +
+        `Lite (camera + brain) — in ${S.input}, cached in ${S.cached_in}, out ${S.output} (output not cached)`;
+}
 
 let callHasAiActivity = false;
 let userUtteranceActive = false;
@@ -269,6 +378,8 @@ function renderTokenUsageUI(pulseCallBox = false) {
         brainCacheEl.innerText = `Cached: ${formatNum(brainUsage.cached)} (${pct}% of input) · Hits: ${brainUsage.cacheHits}/${brainUsage.steps}`;
     }
 
+    renderCostUI();
+
     if (pulseCallBox && callTotalEl) {
         const box = callTotalEl.closest(".token-stat-box");
         if (box) {
@@ -290,6 +401,9 @@ function resetSessionUsage() {
         imageIn: 0, textIn: 0, checks: 0
     });
     Object.assign(brainUsage, emptyBrainUsage());
+    costLedger = emptyCostLedger();
+    Object.assign(callCost, emptyCallCost());
+    callsCostSum = 0;
     callHasAiActivity = false;
     userUtteranceActive = false;
     turnInProgress = false;
@@ -299,6 +413,7 @@ function resetSessionUsage() {
 function startNewCall() {
     sessionUsage.calls += 1;
     Object.assign(callUsage, emptyUsageBucket(), { netPromptDelta: 0, steps: 0 });
+    Object.assign(callCost, emptyCallCost());
     callHasAiActivity = false;
     renderTokenUsageUI(true);
 }
@@ -320,6 +435,7 @@ function handleTokenUsageEvent(payload) {
 
     const pMod = parseModalityTokens(payload.promptTokensDetails);
     const cMod = parseModalityTokens(payload.candidatesTokensDetails);
+    applyCostEvent(payload.cost);
 
     // Incremental deltas of the cumulative context (informational only)
     const audioInDelta = Math.max(0, pMod.AUDIO - sessionUsage.prevAudioIn);
@@ -363,6 +479,7 @@ function handleTokenUsageEvent(payload) {
 
 // Sub-agent usage: camera checks (one event per camera) and brain steps (one event per generateContent)
 function handleSubagentTokenUsageEvent(payload) {
+    applyCostEvent(payload.cost);
     const d = {
         total: payload.totalTokenCount || 0,
         prompt: payload.promptTokenCount || 0,
@@ -831,6 +948,7 @@ async function connect() {
         // Architecture the server resolved for this session
         if (adkEvent.type === "session_info") {
             renderArchBadge(adkEvent.arch);
+            renderPricingRates(adkEvent.pricing);
             logTerminal("SYS", `Agent architecture: ${adkEvent.arch}${adkEvent.arch === "brain" ? " (thin Live voice layer + cached Flash Lite brain)" : " (single Live agent)"}`, true);
             return;
         }
