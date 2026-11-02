@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aris Smart Home AI - Supabase v2</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Supabase Design System Stylesheet -->
+    <link rel="stylesheet" href="/live-smarthome-agent/static/v2/css/styles.css?v=console-tabs-1">
+    <!-- Modular ADK & Live API Controller -->
+    <script src="/live-smarthome-agent/static/v2/js/app-v2.js" type="module"></script>
+</head>
+<body>
+
+    <!-- Supabase Top Navigation Bar -->
+    <header class="topbar">
+        <div class="topbar-left">
+            <a href="/live-smarthome-agent" class="brand-badge">
+                <svg class="brand-logo" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M21.362 9.354H12V.396a.396.396 0 0 0-.716-.233L.203 13.911a.396.396 0 0 0 .319.635H12v8.958a.396.396 0 0 0 .716.233l11.081-13.748a.396.396 0 0 0-.435-.635z"/>
+                </svg>
+                <span>Aris Platform</span>
+            </a>
+            <div class="breadcrumbs">
+                <span class="crumb-sep">/</span>
+                <span>smart-home</span>
+                <span class="crumb-sep">/</span>
+                <span class="crumb-active">live-agent-v2</span>
+            </div>
+        </div>
+
+        <div class="topbar-right">
+            <!-- Live Status Pill -->
+            <div class="status-pill" id="status-pill">
+                <span class="status-dot"></span>
+                <span id="status-text">Disconnected</span>
+            </div>
+
+            <!-- UI Version Switcher -->
+            <div class="version-switcher">
+                <button class="version-btn" onclick="window.switchUiVersion('v1')">v1 Legacy</button>
+                <button class="version-btn active" onclick="window.switchUiVersion('v2')">v2 Supabase</button>
+            </div>
+
+            <!-- Camview Link -->
+            <a href="/live-smarthome-agent/camview" class="icon-btn" title="View Camera Matrix" target="_blank">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 7l-7 5 7 5V7z"></path>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+            </a>
+
+            <!-- Initialize Link -->
+            <a href="/live-smarthome-agent/initialize" class="icon-btn" title="Firestore Schema & Initializer" target="_blank">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                </svg>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Body -->
+    <main class="app-container">
+
+        <!-- Left Column: Live Agent Voice & Chat Console -->
+        <aside class="agent-console">
+
+            <!-- Left Console Tabs -->
+            <div class="version-switcher console-tabs" role="tablist" aria-label="Agent console sections">
+                <button type="button" class="version-btn console-tab active" role="tab" id="console-tab-voice" data-console-tab="voice" aria-selected="true" aria-controls="console-panel-voice">Voice Console</button>
+                <button type="button" class="version-btn console-tab" role="tab" id="console-tab-insights" data-console-tab="insights" aria-selected="false" aria-controls="console-panel-insights">Telemetry &amp; Vocabulary</button>
+            </div>
+
+            <!-- Tab Panel: Voice Console -->
+            <div class="console-tab-panel" id="console-panel-voice" role="tabpanel" aria-labelledby="console-tab-voice">
+
+            <!-- Voice Hero Card -->
+            <div class="supabase-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                            <line x1="12" y1="19" x2="12" y2="23"></line>
+                            <line x1="8" y1="23" x2="16" y2="23"></line>
+                        </svg>
+                        <span>Gemini Live Neural Voice</span>
+                    </div>
+                    <span class="card-badge">BIDI Streaming</span>
+                </div>
+
+                <div class="card-body voice-hero">
+                    <!-- Interactive Pulse Ring / Visualizer -->
+                    <div class="orb-wrapper state-idle" id="orb-wrapper" title="Click to Connect/Disconnect">
+                        <div class="orb-ring"></div>
+                        <div class="orb-ring-inner">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <line x1="12" y1="19" x2="12" y2="23"></line>
+                                <line x1="8" y1="23" x2="16" y2="23"></line>
+                            </svg>
+                        </div>
+                    </div>
+
+                    <div class="state-label" id="state-label">System Idle</div>
+                    <div class="state-subtext" id="state-subtext">Tap orb or Connect to begin</div>
+
+                    <!-- Connect Action Buttons -->
+                    <div class="voice-actions">
+                        <button class="btn-emerald" id="connect-btn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                            <span>Connect Voice</span>
+                        </button>
+                        <button class="btn-danger" id="end-btn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            </svg>
+                            <span>End Session</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Command Chat & Parameters -->
+                <div class="card-body" style="padding-top: 0;">
+                    <!-- Text Chat / Command Bar -->
+                    <div class="chat-input-bar">
+                        <input type="text" id="chat-input" class="supabase-input" placeholder="Type a command or query (e.g. 'Turn on living room AC')...">
+                        <button id="chat-send-btn" class="btn-secondary">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- Voice Parameters & Toggles -->
+                    <div class="settings-group">
+                        <div class="settings-row">
+                            <span class="settings-label">Voice Model</span>
+                            <select id="voice-select" class="supabase-select">
+                                <option value="aoede" selected>Aoede (Female · Natural)</option>
+                                <option value="kore">Kore (Female · Warm)</option>
+                                <option value="puck">Puck (Male · Casual)</option>
+                                <option value="charon">Charon (Male · Deep)</option>
+                                <option value="fenrir">Fenrir (Male · Bold)</option>
+                            </select>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label">Affective Dialog (Vertex AI)</span>
+                            <div class="toggle-switch" id="affective-toggle" title="Toggle emotion & tone matching"></div>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label">Proactive Audio (Vertex AI)</span>
+                            <div class="toggle-switch" id="proactive-toggle" title="Allow agent proactive interjections"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            </div> <!-- end #console-panel-voice -->
+
+            <!-- Tab Panel: Telemetry & Vocabulary -->
+            <div class="console-tab-panel" id="console-panel-insights" role="tabpanel" aria-labelledby="console-tab-insights" hidden>
+
+            <!-- Token Usage Telemetry Card (Session & Per-Call) -->
+            <div class="supabase-card" id="token-usage-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                        <span>Token Usage Telemetry</span>
+                        <button type="button" class="panel-toggle" data-collapse-panel="token-usage-card" aria-expanded="true" aria-controls="token-usage-body" title="Collapse panel">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="card-badge" id="v2-arch-badge" title="Agent architecture for the current session">Arch: --</span>
+                        <span class="card-badge" id="v2-token-turns-badge">0 calls · 0 turns</span>
+                    </div>
+                </div>
+                <div class="card-body token-stats-grid collapsible-body" id="token-usage-body">
+                    <!-- Overall Session Stats -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">SESSION TOTAL</span>
+                            <span class="card-badge" id="v2-session-ctx-badge" title="Latest context window size">Ctx: 0</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-session-total">0</div>
+                        <div class="token-stat-sub" id="v2-session-breakdown">
+                            In: 0 · Out: 0 · Think: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-session-modalities" title="Billed input per modality (Live API re-bills context every turn). 'new' = audio not seen in a prior turn.">
+                            Audio In: 0 (new 0) · Image In: 0 · Text In: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-session-modalities-out">
+                            Audio Out: 0 · Cache: 0 · Camera: 0
+                        </div>
+                    </div>
+
+                    <!-- Per-Call (One Back-and-Forth) Stats -->
+                    <div class="token-stat-box active-call-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">PER CALL (SPEAKER ↔ VOICE)</span>
+                            <span class="card-badge" id="v2-call-steps-badge" title="LLM turns within this back-and-forth call">0 steps</span>
+                        </div>
+                        <div class="token-stat-main" style="color: var(--brand-emerald);" id="v2-call-total">0</div>
+                        <div class="token-stat-sub" id="v2-call-breakdown">
+                            In: 0 · Out: 0 · Think: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-call-modalities">
+                            Audio In: 0 (new 0) · Image In: 0 · Text In: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-call-modalities-out">
+                            Audio Out: 0 · Cache: 0 · Camera: 0
+                        </div>
+                    </div>
+
+                    <!-- Camera Check Sub-Agent Stats (generate_content, outside the Live session) -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">CAMERA CHECKS (SUB-AGENT)</span>
+                            <span class="card-badge" id="v2-camera-checks-badge" title="Camera analyses run by check_camera">0 checks</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-camera-total">0</div>
+                        <div class="token-stat-sub" id="v2-camera-breakdown">
+                            In: 0 · Out: 0 · Think: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-camera-modalities">
+                            Image In: 0 · Text In: 0 · Cache: 0
+                        </div>
+                    </div>
+
+                    <!-- Brain Sub-Agent Stats (Flash Lite generateContent, implicit caching) -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">BRAIN (SUB-AGENT)</span>
+                            <span class="card-badge" id="v2-brain-steps-badge" title="Brain generateContent steps (arch=brain only)">0 steps</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-brain-total">0</div>
+                        <div class="token-stat-sub" id="v2-brain-breakdown">
+                            In: 0 · Out: 0 · Think: 0
+                        </div>
+                        <div class="token-modality-row" id="v2-brain-cache" title="Implicit cache hits on the static brain prefix (system instruction + tools + examples)">
+                            Cached: 0 (0% of input) · Hits: 0/0
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Estimated Cost Card (USD computed server-side in pricing.py from the token telemetry above) -->
+            <div class="supabase-card" id="cost-estimate-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="1" x2="12" y2="23"></line>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                        <span>Estimated Cost</span>
+                        <button type="button" class="panel-toggle" data-collapse-panel="cost-estimate-card" aria-expanded="true" aria-controls="cost-estimate-body" title="Collapse panel">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                    </div>
+                    <span class="card-badge" id="v2-cost-rates-badge" title="Rates load from .env when a session starts">USD · Standard</span>
+                </div>
+                <div class="card-body token-stats-grid collapsible-body" id="cost-estimate-body">
+                    <!-- Session Total Cost -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">SESSION TOTAL</span>
+                            <span class="card-badge" id="v2-cost-session-badge" title="Cache savings vs. uncached input rates">Saved: $0.000000</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-cost-session-total">$0.000000</div>
+                        <div class="token-stat-sub" id="v2-cost-session-breakdown">Live: $0.000000 · Camera: $0.000000 · Brain: $0.000000</div>
+                        <div class="token-modality-row" id="v2-cost-session-io">In: $0.000000 · Cached In: $0.000000 · Out: $0.000000</div>
+                    </div>
+
+                    <!-- Per-Call Cost -->
+                    <div class="token-stat-box active-call-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">PER CALL (SPEAKER ↔ VOICE)</span>
+                            <span class="card-badge" id="v2-cost-call-badge" title="Average cost per completed call in this session">Call #0 · Avg: $0.000000</span>
+                        </div>
+                        <div class="token-stat-main" style="color: var(--brand-emerald);" id="v2-cost-call-total">$0.000000</div>
+                        <div class="token-stat-sub" id="v2-cost-call-breakdown">Live: $0.000000 · Camera: $0.000000 · Brain: $0.000000</div>
+                        <div class="token-modality-row" id="v2-cost-call-io">In: $0.000000 · Cached In: $0.000000 · Out: $0.000000</div>
+                    </div>
+
+                    <!-- Camera Checks Cost -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">CAMERA CHECKS (SUB-AGENT)</span>
+                            <span class="card-badge" id="v2-cost-camera-badge">0 checks · Avg: $0.000000</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-cost-camera-total">$0.000000</div>
+                        <div class="token-modality-row" id="v2-cost-camera-io">In: $0.000000 · Cached In: $0.000000 · Out: $0.000000</div>
+                    </div>
+
+                    <!-- Brain Cost -->
+                    <div class="token-stat-box">
+                        <div class="token-stat-header">
+                            <span class="telemetry-label">BRAIN (SUB-AGENT)</span>
+                            <span class="card-badge" id="v2-cost-brain-badge">0 steps · Avg: $0.000000</span>
+                        </div>
+                        <div class="token-stat-main" id="v2-cost-brain-total">$0.000000</div>
+                        <div class="token-stat-sub" id="v2-cost-brain-savings" title="Implicit cache savings vs. uncached input rate">Cache saved: $0.000000</div>
+                        <div class="token-modality-row" id="v2-cost-brain-io">In: $0.000000 · Cached In: $0.000000 · Out: $0.000000</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom Vocabulary Card (ASR biasing via input_audio_transcription.custom_vocabulary) -->
+            <div class="supabase-card" id="custom-vocab-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                        </svg>
+                        <span>Custom Vocabulary</span>
+                        <button type="button" class="panel-toggle" data-collapse-panel="custom-vocab-card" aria-expanded="true" aria-controls="custom-vocab-body" title="Collapse panel">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                    </div>
+                    <span class="card-badge" id="v2-vocab-badge" title="User terms · total terms sent to the Live API">0 custom · 0 total</span>
+                </div>
+                <div class="card-body vocab-body collapsible-body" id="custom-vocab-body">
+                    <label class="telemetry-label" for="custom-vocab-input">YOUR TERMS (ONE PER LINE OR COMMA-SEPARATED)</label>
+                    <textarea id="custom-vocab-input" class="supabase-input vocab-input" rows="4" spellcheck="false"
+                        placeholder="e.g.&#10;Somchai&#10;Backyard Sprinkler&#10;Siam Paragon"></textarea>
+                    <div class="vocab-actions">
+                        <span class="vocab-status" id="v2-vocab-status">Empty: only the built-in terms are used.</span>
+                        <button type="button" class="btn-secondary vocab-clear" id="custom-vocab-clear">Clear</button>
+                    </div>
+                    <div class="token-modality-row vocab-defaults">
+                        <span class="telemetry-label">BUILT-IN (ALWAYS SENT)</span>
+                        <div class="vocab-chips" id="v2-vocab-defaults"></div>
+                    </div>
+                </div>
+            </div>
+
+            </div> <!-- end #console-panel-insights -->
+
+        </aside>
+
+        <!-- Right Column: Smart Infrastructure & Tool Terminal -->
+        <section class="right-panel" id="right-panel">
+
+            <!-- Supabase Dynamic Hero Action HUD Overlay -->
+            <div id="hero-overlay" class="hero-overlay">
+                <div id="hero-stack" class="hero-stack">
+                    <!-- Dynamic Hero Cards will appear here -->
+                </div>
+            </div>
+
+            <!-- TOP CONVERSATION & TRANSCRIPT PANEL (Like v1, Supabase Styled) -->
+            <div class="supabase-transcript-panel" id="transcript-panel">
+                <div class="transcript-topbar">
+                    <div class="transcript-meta">
+                        <span class="transcript-dot"></span>
+                        <span class="transcript-tag">[LIVE_CONVERSATION_STREAM]</span>
+                    </div>
+                    <span class="card-badge" id="transcript-state-badge">IDLE</span>
+                </div>
+                <div class="transcript-user-line" id="transcript-user">Press connect, then speak...</div>
+                <div class="transcript-ai-line" id="transcript-ai"></div>
+            </div>
+
+            <!-- Content Wrapper (blurs during active hero alert) -->
+            <div id="right-panel-content" class="right-panel-content">
+
+                <!-- Telemetry Stats Bar -->
+                <div class="telemetry-bar">
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Total Devices</span>
+                        <span class="telemetry-value" id="telemetry-total">--</span>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Active Power</span>
+                        <span class="telemetry-value" id="telemetry-active" style="color: var(--brand-emerald);">--</span>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Climate Running</span>
+                        <span class="telemetry-value" id="telemetry-climate">--</span>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Surveillance Feeds</span>
+                        <span class="telemetry-value" id="telemetry-cameras">--</span>
+                    </div>
+                </div>
+
+                <!-- Climate Management -->
+                <div>
+                    <div class="section-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                        <span>Climate & HVAC</span>
+                    </div>
+                    <div class="device-grid" id="climate-grid">
+                        <!-- Dynamic AC Cards -->
+                    </div>
+                </div>
+
+                <!-- Lighting Management -->
+                <div>
+                    <div class="section-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-7 7c0 3 2 5 2 7h10c0-2 2-4 2-7a7 7 0 0 0-7-7z"></path>
+                        </svg>
+                        <span>Smart Lighting</span>
+                    </div>
+                    <div class="device-grid" id="lighting-grid">
+                        <!-- Dynamic Light Cards -->
+                    </div>
+                </div>
+
+                <!-- Security & Locks -->
+                <div>
+                    <div class="section-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <span>Perimeter & Access Control</span>
+                    </div>
+                    <div class="device-grid" id="security-grid">
+                        <!-- Dynamic Lock Cards -->
+                    </div>
+                </div>
+
+                <!-- Surveillance Matrix -->
+                <div id="camera-panel">
+                    <div class="section-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 7l-7 5 7 5V7z"></path>
+                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                        </svg>
+                        <span>Smart Vision Cameras</span>
+                        <button type="button" class="panel-toggle" data-collapse-panel="camera-panel" aria-expanded="true" aria-controls="camera-grid" title="Collapse panel">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                    </div>
+                    <div class="device-grid collapsible-body" id="camera-grid">
+                        <!-- Dynamic Camera Cards -->
+                    </div>
+                </div>
+
+                <!-- Live Agent Tool Execution Stream (Supabase Code-Editor Terminal) -->
+                <div class="terminal-card">
+                    <div class="terminal-header">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div class="terminal-dots">
+                                <div class="dot red"></div>
+                                <div class="dot yellow"></div>
+                                <div class="dot green"></div>
+                            </div>
+                            <span class="terminal-title">Agent Execution Stream (ADK Tools & Gemini Live Events)</span>
+                        </div>
+                        <button class="terminal-clear" id="terminal-clear">Clear Buffer</button>
+                    </div>
+                    <div class="terminal-stream" id="terminal-stream">
+                        <!-- Real-time tool stream rows appear here -->
+                        <div class="stream-row">
+                            <span class="stream-time">00:00:00</span>
+                            <span class="stream-tag call">READY</span>
+                            <span class="stream-msg">Supabase v2 interface initialized. Ready for Gemini Live session.</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div> <!-- end #right-panel-content -->
+
+        </section>
+    </main>
+
+    <!-- Camera Inspection Modal (Supabase Dialog) -->
+    <div class="modal-backdrop" id="camera-modal">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <div class="modal-title" id="modal-title">Live Camera Multimodal Inspection</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button class="icon-btn" id="modal-prev-btn" style="width: 28px; height: 28px; display: none;" title="Previous Camera">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+                    <button class="icon-btn" id="modal-next-btn" style="width: 28px; height: 28px; display: none;" title="Next Camera">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </button>
+                    <button class="modal-close" id="modal-close">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <img id="modal-img" class="modal-img" src="" alt="Camera Inspection Feed">
+                <div class="modal-desc" id="modal-desc">Analyzing visual frame with Gemini Flash Vision...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Real-time Device Action Toast Stack -->
+    <div class="toast-stack" id="toast-stack"></div>
+
+</body>
+</html>

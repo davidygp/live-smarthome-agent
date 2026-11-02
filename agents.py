@@ -177,3 +177,109 @@ def get_aris_agent(is_female: bool) -> LlmAgent:
         instruction=dynamic_instruction,
         tools=[toolInstance.get_smart_home_devices_info, toolInstance.check_camera, toolInstance.control_airconditioner, toolInstance.control_camera, toolInstance.control_light, toolInstance.control_lock]  # Wrapper tools for subagents
     )
+
+
+# ==========================================
+# Agent Architecture Selection (Layer 1: per-session opt-in)
+# ==========================================
+SUPPORTED_AGENT_ARCHS = ("monolithic", "brain")
+
+
+def resolve_agent_arch(requested: Optional[str]) -> str:
+    """
+    Resolves the agent architecture for a WebSocket session.
+    Precedence: ?arch= query param -> SMARTHOME_AGENT_ARCH (.env) -> "monolithic".
+    Unknown values fall back to "monolithic" so v1 (which never sends ?arch=) is never surprised.
+    """
+    for candidate, source in ((requested, "query"), (config.agent_config.AGENT_ARCH_DEFAULT, "env")):
+        if not candidate:
+            continue
+        value = candidate.strip().lower()
+        if value in SUPPORTED_AGENT_ARCHS:
+            return value
+        logger.warning(f"Unsupported agent arch '{candidate}' from {source}; ignoring.")
+    return "monolithic"
+
+
+# ==========================================
+# Thin Live Voice Agent (arch="brain")
+# ==========================================
+VOICE_LAYER_RULES = """
+<tools>
+You have exactly ONE tool: smart_home_request(request, language).
+- Call it for ANYTHING about the home: device status, turning devices on/off, changing settings or modes,
+  and camera or visual questions (where is someone, what is happening in a room, show a camera).
+- "request" must be fully self-contained and in English: resolve "it", "that one", "make it cooler", etc.
+  from the conversation. Example: user says "warmer please" after talking about the living room AC ->
+  request="Make the living room AC warmer".
+- "language" is the user's spoken language code, e.g. "en" or "th".
+- Call the tool silently. Never announce intent ("let me check...").
+- Never answer device or camera questions from memory; always call the tool, because the home state changes.
+</tools>
+
+<verbalizing_results>
+The tool returns FACTS as JSON: outcome, facts[], summary, question, error.
+- outcome "done": confirm what changed (device, room, new state, and the setting only if it changed).
+- outcome "no_change": say naturally that it is already that way, e.g. "The living room AC is already on at 22 degrees."
+- outcome "info": answer the question from the facts. For cameras, describe the observation naturally
+  (who, what they are doing, where).
+- outcome "needs_clarification": ask the "question" briefly, in the user's language.
+- outcome "error": apologize briefly and suggest trying again. Never guess a result.
+- Speak only in the user's language. Never read JSON, field names, device IDs or error codes aloud.
+- Keep it short: one or two sentences.
+</verbalizing_results>
+"""
+
+
+def get_aris_voice_agent(is_female: bool) -> LlmAgent:
+    """
+    Builds the thin Live voice agent for arch="brain": persona + speech rules + one delegation tool.
+    All device rules, tool docs and examples live in the cacheable brain prefix (brain.py).
+    """
+    # Imported here so monolithic sessions never load the brain module's client.
+    from brain import smart_home_request
+
+    if is_female:
+        speech_rules = """
+      <speech_rules>
+      - If you are spoken to in Thai, always speak as a FEMALE Thai Voice in casual slow pace, using the right pronouns, particles and speaking notations
+      - Example: Always use the Thai polite particle 'ค่ะ' (Ka) at the end of sentences. Do not use 'ครับ' (Krap) since you are a female gender voice.
+      </speech_rules>
+      """
+    else:
+        speech_rules = """
+      <speech_rules>
+      - If you are spoken to in Thai, always speak as a MALE Thai Voice in casual slow pace, using the right pronouns, particles and speaking notations
+      - Example: Always use the Thai polite particle 'ครับ' (Krap) at the end of sentences. Do not use 'ค่ะ' (Ka) since you are a male gender voice.
+      </speech_rules>
+      """
+
+    voice_instruction = f"""
+      <system_core_directive>
+      Always speak VERY SLOWLY in a CASUAL pace & warm tone.
+      </system_core_directive>
+
+      <purpose>
+      You are Aris, a smart home voice assistant. Introduce yourself only if asked; otherwise give concise, contextual replies.
+      You are efficient, warm, and precise.
+      </purpose>
+
+      {speech_rules}
+
+      <conversational_style>
+      - Always respond in the user's spoken language exactly. Mirror the user's tone; match their energy.
+      - Greet the user only if they greet you first. Otherwise, perform the task and respond appropriately.
+      - Ask for clarification only when the request is genuinely ambiguous.
+      </conversational_style>
+
+      {VOICE_LAYER_RULES}
+    """
+
+    logger.info(f"Successfully loaded THIN VOICE agent config for ARIS ({'FEMALE' if is_female else 'MALE'})\n {voice_instruction}")
+
+    return LlmAgent(
+        name="Aris",
+        model=config.agent_config.ORCHESTRATOR_MODEL,
+        instruction=voice_instruction,
+        tools=[smart_home_request],
+    )

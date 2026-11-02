@@ -12,7 +12,7 @@ import uvicorn
 from typing import Optional
 
 # Load environment variables first
-load_dotenv(override=True)
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 # =========================================================================
 # TELEMETRY ACTIVATION (Must happen BEFORE any google or adk imports!)
@@ -53,7 +53,10 @@ logger = logging.getLogger(__name__)
 
 # Structured CSV Usage Logger Setup
 TRACE_FILE = "gemini_usage_trace.log"
-CSV_HEADER = "timestamp,user_id,session_id,total_token_count,prompt_token_count,prompt_tokens_details,candidates_token_count,candidates_tokens_details,cached_content_token_count,cache_tokens_details,thoughts_token_count\n"
+CSV_HEADER = "timestamp,user_id,session_id,total_token_count,prompt_token_count,prompt_tokens_details,candidates_token_count,candidates_tokens_details,cached_content_token_count,cache_tokens_details,thoughts_token_count,tool_use_prompt_token_count\n"
+# Sub-agent rows (prefix "subagent_usage") use this column layout:
+# timestamp,user_id,session_id,source,model,camera_id,total_token_count,prompt_token_count,image_in_token_count,text_in_token_count,candidates_token_count,thoughts_token_count,cached_content_token_count
+# (source = "check_camera" or "brain"; camera_id is empty for brain rows)
 
 # OVERWRITE MODE: Unconditionally open with "w" to wipe old data and write a fresh header
 with open(TRACE_FILE, "w", encoding="utf-8") as f:
@@ -93,8 +96,11 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 import config
 from config import AgentConfig
-from agents import get_aris_agent, toolInstance
+from agents import get_aris_agent, get_aris_voice_agent, resolve_agent_arch, toolInstance
 from voiceconfig import VoiceConfig
+from usage_sink import bind_session_queue, modality_counts
+from brain import bind_brain_session
+import pricing
 
 app_name = config.APP_NAME
 agent_config = config.agent_config
@@ -118,6 +124,68 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import HTTPException
 from fastapi.concurrency import run_in_threadpool
 # =========================================================================
+
+SMARTHOME_CUSTOM_VOCABULARY = [
+    # 1. Agent Persona & Named Entities (from camsim.py /camconfig)
+    "Aris",
+    "Grandma",
+    "ThaiMaid",
+    # 2. Hardware Device IDs & Labels (from tools.py /Firestore)
+    "ac-1",
+    "ac-2",
+    "cam-1",
+    "cam-2",
+    "cam-3",
+    "light-1",
+    "lock-1",
+    "Living Room AC",
+    "Guest Bedroom Light",
+    "Front Door Lock",
+    # 3. Smart Home Modes & States (from agents.py hard rules)
+    "DND",
+    "Protect",
+    "Private",
+    "Online",
+    "Movie mode",
+    "Cool mode",
+    "Party mode",
+]
+
+# Guardrails for user-supplied vocabulary (sent from the v2 UI as a query param)
+MAX_USER_VOCAB_TERMS = 100
+MAX_USER_VOCAB_TERM_LENGTH = 80
+
+def build_custom_vocabulary(user_vocab_raw: Optional[str]) -> list[str]:
+    """Returns SMARTHOME_CUSTOM_VOCABULARY with user terms appended.
+
+    `user_vocab_raw` is a JSON array of strings (preferred) or a newline/comma
+    separated string. Terms are trimmed, length-capped, and de-duplicated
+    case-insensitively against the defaults and each other. Empty/invalid input
+    yields the defaults unchanged.
+    """
+    vocabulary = list(SMARTHOME_CUSTOM_VOCABULARY)
+    if not user_vocab_raw or not user_vocab_raw.strip():
+        return vocabulary
+
+    try:
+        parsed = json.loads(user_vocab_raw)
+        candidates = parsed if isinstance(parsed, list) else [str(parsed)]
+    except (json.JSONDecodeError, TypeError):
+        candidates = user_vocab_raw.replace(",", "\n").splitlines()
+
+    seen = {term.casefold() for term in vocabulary}
+    added = 0
+    for item in candidates:
+        if added >= MAX_USER_VOCAB_TERMS:
+            logger.warning(f"Custom vocabulary truncated at {MAX_USER_VOCAB_TERMS} user terms")
+            break
+        term = " ".join(str(item).split())[:MAX_USER_VOCAB_TERM_LENGTH]
+        if not term or term.casefold() in seen:
+            continue
+        seen.add(term.casefold())
+        vocabulary.append(term)
+        added += 1
+    return vocabulary
 
 def format_modality_details(details_list) -> str:
     """Flattens and alphabetically sorts a list of ModalityTokenCount objects 
@@ -162,8 +230,8 @@ NO_CACHE_HEADERS = {
 @app.middleware("http")
 async def add_cache_control_header(request: Request, call_next):
     response = await call_next(request)
-    # Target only the images inside the static camview directory
-    if request.url.path.startswith("/live-smarthome-agent/static/camview/") or request.url.path.endswith(".js"):
+    # Target the camview images plus JS/CSS so UI changes are never served stale
+    if request.url.path.startswith("/live-smarthome-agent/static/camview/") or request.url.path.endswith((".js", ".css")):
         response.headers.update(NO_CACHE_HEADERS)
     return response
 
@@ -171,19 +239,55 @@ async def add_cache_control_header(request: Request, call_next):
 # Front End Endpoints
 # ========================================
 
+def resolve_ui_version(request: Request) -> str:
+    """Determines whether to serve v1 or v2 visuals based on query, cookie, or .env."""
+    # 1. Query parameter override (?v=2 or ?ui=v2 or ?v=1 or ?ui=v1)
+    query_v = request.query_params.get("ui") or request.query_params.get("v")
+    if query_v in ("v1", "1"):
+        return "v1"
+    if query_v in ("v2", "2"):
+        return "v2"
+
+    # 2. Cookie override
+    cookie_v = request.cookies.get("ui_version")
+    if cookie_v in ("v1", "v2"):
+        return cookie_v
+
+    # 3. Environment default (.env: SMARTHOME_UI_VERSION=v2)
+    env_v = os.getenv("SMARTHOME_UI_VERSION", "v1").lower().strip()
+    return "v2" if env_v in ("v2", "2") else "v1"
+
+
 @app.get("/live-smarthome-agent")
-async def root():
-    """Serve the index.html page."""
+async def root(request: Request):
+    """Serve the smart home dashboard (v1 or v2 dynamically resolved)."""
+    version = resolve_ui_version(request)
+    v2_file = Path(__file__).parent / "static" / "v2" / "index.html"
+    if version == "v2" and v2_file.exists():
+        return FileResponse(v2_file, headers=NO_CACHE_HEADERS)
     return FileResponse(Path(__file__).parent / "static" / "index.html", headers=NO_CACHE_HEADERS)
 
+@app.get("/live-smarthome-agent/v1")
+async def root_v1():
+    """Explicitly serve the v1 visuals."""
+    return FileResponse(Path(__file__).parent / "static" / "index.html", headers=NO_CACHE_HEADERS)
+
+@app.get("/live-smarthome-agent/v2")
+async def root_v2():
+    """Explicitly serve the v2 visuals."""
+    v2_file = Path(__file__).parent / "static" / "v2" / "index.html"
+    if not v2_file.exists():
+        raise HTTPException(status_code=404, detail="v2 visual template not yet created at static/v2/index.html")
+    return FileResponse(v2_file, headers=NO_CACHE_HEADERS)
+
 @app.get("/live-smarthome-agent/initialize")
-async def root():
+async def initialize_page():
     """Serve the initialize.html page."""
     return FileResponse(Path(__file__).parent / "static" / "initialize.html", headers=NO_CACHE_HEADERS)
 
 @app.get("/live-smarthome-agent/camview")
-async def root():
-    """Serve the index.html page."""
+async def camview_page():
+    """Serve the camview.html page."""
     return FileResponse(Path(__file__).parent / "static" / "camview.html", headers=NO_CACHE_HEADERS)
 
 
@@ -202,6 +306,9 @@ async def get_app_config():
         "document": "default",
         "orchestrator_model": agent_config.ORCHESTRATOR_MODEL,
         "subagent_model": agent_config.SUBAGENT_MODEL,
+        "default_custom_vocabulary": SMARTHOME_CUSTOM_VOCABULARY,
+        "max_user_vocab_terms": MAX_USER_VOCAB_TERMS,
+        "max_user_vocab_term_length": MAX_USER_VOCAB_TERM_LENGTH,
     }
 
 @app.get("/live-smarthome-agent/api/devices")
@@ -312,7 +419,9 @@ async def websocket_endpoint(
     session_id: str,
     voice: Optional[str] = "aoede",              # Defaults to 'aoede'
     affective_dialog: Optional[bool] = False,    # Auto-converts "true" to True
-    proactive_audio: Optional[bool] = False      # Auto-converts "false" to False    
+    proactive_audio: Optional[bool] = False,     # Auto-converts "false" to False    
+    custom_vocabulary: Optional[str] = None,     # JSON array of extra ASR terms from the UI
+    arch: Optional[str] = None                   # "monolithic" | "brain"; falls back to SMARTHOME_AGENT_ARCH
 ) -> None:    
     
     logger.info(
@@ -322,9 +431,14 @@ async def websocket_endpoint(
     logger.info("WebSocket connection accepted")
     logger.info(f"Settings - Voice: {voice} / Gender: {VoiceConfig.get_gender(voice).name}, Affective: {affective_dialog}, Proactive: {proactive_audio}")
 
+    # Resolve agent architecture (v1 never sends ?arch= -> stays on the .env default, "monolithic")
+    session_arch = resolve_agent_arch(arch)
+    logger.info(f"Agent architecture: {session_arch}")
+    agent_factory = get_aris_voice_agent if session_arch == "brain" else get_aris_agent
+
     # Fetch Agent Dynamically (Run in Threadpool so we don't block the event loop)
     try:
-        agent = await run_in_threadpool(get_aris_agent, VoiceConfig.is_female(voice))
+        agent = await run_in_threadpool(agent_factory, VoiceConfig.is_female(voice))
         logger.info(f"Successfully loaded agent profile for ARIS")
     except Exception as e:
         logger.error(f"Failed to load agent ARIS: {e}")
@@ -348,6 +462,14 @@ async def websocket_endpoint(
     # ========================================
 
     response_modalities = ["AUDIO"]
+
+    # Default smart-home vocabulary + any user-supplied terms (appended)
+    session_vocabulary = build_custom_vocabulary(custom_vocabulary)
+    user_vocab_count = len(session_vocabulary) - len(SMARTHOME_CUSTOM_VOCABULARY)
+    logger.info(
+        f"Custom vocabulary: {len(SMARTHOME_CUSTOM_VOCABULARY)} default + {user_vocab_count} user terms"
+        + (f" -> {session_vocabulary[len(SMARTHOME_CUSTOM_VOCABULARY):]}" if user_vocab_count else "")
+    )
         
     # 1. Define the base configuration arguments that apply to both Gemini and Vertex AI
     run_config_kwargs = {
@@ -360,7 +482,7 @@ async def websocket_endpoint(
                 )
             )
         ),            
-        "input_audio_transcription": types.AudioTranscriptionConfig(language_codes=['en-US', 'th-TH']),
+        "input_audio_transcription": types.AudioTranscriptionConfig(language_codes=['en-US', 'th-TH'], custom_vocabulary=session_vocabulary),
         "output_audio_transcription": types.AudioTranscriptionConfig(language_codes=['en-US', 'th-TH']),
     }
 
@@ -508,13 +630,14 @@ async def websocket_endpoint(
                 cand_tokens = getattr(usage, 'candidates_token_count', 0) or 0
                 cached_tokens = getattr(usage, 'cached_content_token_count', 0) or 0
                 thoughts_tokens = getattr(usage, 'thoughts_token_count', 0) or 0
+                tool_use_tokens = getattr(usage, 'tool_use_prompt_token_count', 0) or 0
 
                 # 3. Spreadsheet-ready CSV Row for the actual background trace log file 
                 csv_fields = [
                     str(timestamp_str), str(user_id), str(session_id),
                     str(total_tokens), str(prompt_tokens), f'"{p_details}"',
                     str(cand_tokens), f'"{cand_details}"', str(cached_tokens),
-                    f'"{c_details}"', str(thoughts_tokens)
+                    f'"{c_details}"', str(thoughts_tokens), str(tool_use_tokens)
                 ]
                 csv_row = ",".join(csv_fields)
                 
@@ -528,10 +651,40 @@ async def websocket_endpoint(
                     f" prompt_token_count {prompt_tokens}; {p_details},"
                     f" candidates_token_count {cand_tokens}; {cand_details},"
                     f" cached_content_token_count {cached_tokens}; {c_details},"
-                    f" thoughts_token_count {thoughts_tokens}"
+                    f" thoughts_token_count {thoughts_tokens},"
+                    f" tool_use_prompt_token_count {tool_use_tokens}"
                 )                
                                 
                 logger.info(csv_row_display)
+
+                # 5. Deterministic USD cost estimate for this Live turn (pricing.py, rates from .env;
+                #    no cache pricing for the Live model, so cached tokens bill at full input rate)
+                turn_cost = pricing.cost_live_turn(
+                    prompt_mod=modality_counts(getattr(usage, "prompt_tokens_details", None)),
+                    cand_mod=modality_counts(getattr(usage, "candidates_tokens_details", None)),
+                    candidates_total=cand_tokens,
+                    thoughts=thoughts_tokens,
+                    tool_use=tool_use_tokens,
+                )
+                cost_ledger.add("live", turn_cost)
+                logger.info(f"COST live turn ${turn_cost['totalUsd']:.6f} | session ${cost_ledger.session['totalUsd']:.6f}")
+
+                # 6. Send dedicated normalized token usage event to frontend UI
+                usage_payload = {
+                    "type": "token_usage",
+                    "timestamp": timestamp_str,
+                    "totalTokenCount": total_tokens,
+                    "promptTokenCount": prompt_tokens,
+                    "candidatesTokenCount": cand_tokens,
+                    "cachedContentTokenCount": cached_tokens,
+                    "thoughtsTokenCount": thoughts_tokens,
+                    "toolUsePromptTokenCount": tool_use_tokens,
+                    "promptTokensDetails": p_details,
+                    "candidatesTokensDetails": cand_details,
+                    "cacheTokensDetails": c_details,
+                    "cost": {"event": turn_cost, "bucket": "live", "ledger": cost_ledger.snapshot()},
+                }
+                await websocket.send_text(json.dumps(usage_payload))
             # =========================================================================                                 
             
             # Always forward the raw event to the frontend (for audio), everything else is JSON
@@ -557,6 +710,62 @@ async def websocket_endpoint(
     # ========================================
     # Run the Concurrent Tasks
     # ========================================
+    async def subagent_usage_task() -> None:
+        """Forwards side-channel items: sub-agent token usage (camera, brain) and mirrored UI events."""
+        while True:
+            item = await subagent_usage_queue.get()
+
+            # Mirrored ADK-shaped tool events from the brain: WebSocket only, never the Live session
+            if item.get("kind") == "ui_event":
+                event = item["event"]
+                logger.info(f"### MIRRORED EVENT TO FRONTEND - {json.dumps(event, default=str)[:500]}")
+                try:
+                    await websocket.send_text(json.dumps(event, default=str))
+                except Exception as e:
+                    logger.warning(f"Could not forward mirrored event to frontend: {e}")
+                continue
+
+            record = item.get("record", item)
+            timestamp_str = time.strftime("%Y-%m-%d %H:%M:%S")
+            csv_fields = [
+                timestamp_str, str(user_id), str(session_id),
+                str(record.get("source", "")), str(record.get("model", "")),
+                str(record.get("cameraId", "")),
+                str(record["totalTokenCount"]), str(record["promptTokenCount"]),
+                str(record["imageInTokenCount"]), str(record["textInTokenCount"]),
+                str(record["candidatesTokenCount"]), str(record["thoughtsTokenCount"]),
+                str(record["cachedContentTokenCount"]),
+            ]
+            usage_logger.info(f"subagent_usage {','.join(csv_fields)}")
+            logger.info(f"SUBAGENT USAGE {record}")
+            bucket = pricing.bucket_for_source(str(record.get("source", "")))
+            sub_cost = pricing.cost_subagent_record(record)
+            cost_ledger.add(bucket, sub_cost)
+            logger.info(f"COST {bucket} ${sub_cost['totalUsd']:.6f} | session ${cost_ledger.session['totalUsd']:.6f}")
+            try:
+                await websocket.send_text(json.dumps({
+                    "type": "subagent_token_usage", "timestamp": timestamp_str, **record,
+                    "cost": {"event": sub_cost, "bucket": bucket, "ledger": cost_ledger.snapshot()},
+                }))
+            except Exception as e:
+                logger.warning(f"Could not forward sub-agent usage to frontend: {e}")
+
+    # Bind the per-session sub-agent usage queue BEFORE spawning tasks so that
+    # tool executions inside run_live() inherit it via contextvars.
+    subagent_usage_queue = bind_session_queue()
+    bind_brain_session()
+    # Per-session USD cost ledger (Live + camera + brain), computed in Python only
+    cost_ledger = pricing.SessionCostLedger()
+    usage_forwarder = asyncio.create_task(subagent_usage_task())
+
+    # Tell the UI which architecture this session runs (v1 ignores unknown JSON)
+    try:
+        await websocket.send_text(json.dumps({
+            "type": "session_info", "arch": session_arch, "pricing": pricing.pricing_summary(),
+        }))
+    except Exception as e:
+        logger.warning(f"Could not send session_info to frontend: {e}")
+
     try:
         logger.info("Starting asyncio.gather for tasks")
         await asyncio.gather(
@@ -571,7 +780,14 @@ async def websocket_endpoint(
         logger.error(f"Unexpected error: {e}", exc_info=True)
     finally:
         logger.info("Closing live_request_queue")
+        usage_forwarder.cancel()
         live_request_queue.close()
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8001,
+        reload=True,
+        reload_excludes=[".venv*", "metrics*", "*.log", "*.json", "__pycache__*"],
+    )
